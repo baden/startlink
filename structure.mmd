@@ -1,0 +1,10 @@
+graph TD;
+    O[Оператор] --> P[Пульт TX12];
+    P -->|USB| N[Ноутбук];
+    N -->|Кабель или Starlink| I[Интернет];
+    I -->|Starlink| M[fa:fa-car Car RPi5];
+
+    class Drone{
+      +bool is_wild
+      +run()
+    }
