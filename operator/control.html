@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gamepad Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #gamepad-status { margin-bottom: 20px; font-weight: bold; }
+        .control-group { margin: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        .control-item { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Gamepad Viewer</h1>
+    <div id="gamepad-status">Очікування підключення джойстика...</div>
+
+    <div id="axes-display" class="control-group">
+        <h2>Осі</h2>
+        <div id="axis0" class="control-item">Вісь 0: 0</div>
+        <div id="axis1" class="control-item">Вісь 1: 0</div>
+        <div id="axis2" class="control-item">Вісь 2: 0</div>
+        <div id="axis3" class="control-item">Вісь 3: 0</div>
+        <!-- Додайте більше осей за потреби -->
+    </div>
+
+    <div id="buttons-display" class="control-group">
+        <h2>Кнопки</h2>
+        <div id="button0" class="control-item">Кнопка 0: Не натиснута</div>
+        <div id="button1" class="control-item">Кнопка 1: Не натиснута</div>
+        <!-- Додайте більше кнопок за потреби -->
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
