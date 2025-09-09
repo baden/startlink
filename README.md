@@ -28,6 +28,13 @@ IPv6: 2a01:4f8:1c1a:8b19::/64
 
 
 
+
+```sh
+ uv venv
+ source .venv/bin/activate
+ uv pip install websockets
+```
+
 ## Керування
 
 Примітки про пульту TX12

@@ -1,5 +1,6 @@
 let gamepad = null;
 let requestAnimationFrameId = null;
+const ws = new WebSocket("ws://localhost:8765");
 
 // Функція для оновлення статусу джойстика
 function updateGamepadStatus() {
@@ -8,6 +9,15 @@ function updateGamepadStatus() {
         statusDiv.textContent = `Підключено: ${gamepad.id} (Індекс: ${gamepad.index})`;
         updateAxesDisplay();
         updateButtonsDisplay();
+
+        // Відправка даних через WebSocket якщо з'єднання відкрито
+        if (ws.readyState === WebSocket.OPEN) {
+            const data = {
+                axes: gamepad.axes,
+                buttons: gamepad.buttons.map(button => ({ pressed: button.pressed, value: button.value }))
+            };
+            ws.send(JSON.stringify(data));
+        }
     } else {
         statusDiv.textContent = 'Очікування підключення джойстика...';
     }
@@ -109,3 +119,27 @@ if (initialGamepads.length > 0) {
 } else {
     updateGamepadStatus();
 }
+
+
+
+
+ws.onopen = () => {
+    console.log("Connected to WebSocket server!");
+    // Відправляємо тестове повідомлення
+    ws.send(JSON.stringify({ command: "get_status" }));
+};
+
+ws.onmessage = (event) => {
+    console.log("Received:", event.data);
+};
+
+ws.onclose = (event) => {
+    console.log("Disconnected:", event.code, event.reason);
+};
+
+ws.onerror = (error) => {
+    console.error("WebSocket Error:", error);
+};
+
+// Щоб закрити з'єднання:
+// ws.close();
