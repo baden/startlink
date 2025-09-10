@@ -1,6 +1,11 @@
 let gamepad = null;
 let requestAnimationFrameId = null;
-const ws = new WebSocket("ws://localhost:8765");
+// const ws = new WebSocket("ws://localhost:8765");
+const ws = new WebSocket("ws://s.navi.cc:8765");
+
+// Змінні для керування частотою відправки
+// let lastSendTime = 0;
+// const sendInterval = 1000 / 5; // 1000 мс / 5 відправок = 200 мс між відправками
 
 // Функція для оновлення статусу джойстика
 function updateGamepadStatus() {
@@ -10,13 +15,15 @@ function updateGamepadStatus() {
         updateAxesDisplay();
         updateButtonsDisplay();
 
-        // Відправка даних через WebSocket якщо з'єднання відкрито
-        if (ws.readyState === WebSocket.OPEN) {
+        // Перевірка часу перед відправкою через WebSocket
+        const currentTime = Date.now();
+        if (ws.readyState === WebSocket.OPEN /*&& (currentTime - lastSendTime > sendInterval)*/) {
             const data = {
                 axes: gamepad.axes,
                 buttons: gamepad.buttons.map(button => ({ pressed: button.pressed, value: button.value }))
             };
             ws.send(JSON.stringify(data));
+            //lastSendTime = currentTime; // Оновлюємо час останньої відправки
         }
     } else {
         statusDiv.textContent = 'Очікування підключення джойстика...';
@@ -119,8 +126,6 @@ if (initialGamepads.length > 0) {
 } else {
     updateGamepadStatus();
 }
-
-
 
 
 ws.onopen = () => {

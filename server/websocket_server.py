@@ -1,15 +1,37 @@
 import asyncio
-# import websockets
+import websockets
 from websockets.asyncio.server import serve
 import datetime
 import json
 import logging
+import socket
 
 # Налаштування логування
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Зберігатимемо активні WebSocket-з'єднання
 connected_clients = set()
+
+# Зберігатимемо адреси UDP-клієнтів
+udp_clients = set()
+
+# UDP-сервер: приймає повідомлення та реєструє клієнтів
+class UDPServerProtocol:
+    def __init__(self):
+        self.transport = None
+
+    def connection_made(self, transport):
+        self.transport = transport
+        logging.info("UDP server started")
+
+    def datagram_received(self, data, addr):
+        logging.info(f"UDP packet received from {addr}: {data}")
+        udp_clients.add(addr)
+        # Можна додати обробку вхідних UDP-пакетів тут
+
+    def send_to_clients(self, message: bytes):
+        for addr in udp_clients:
+            self.transport.sendto(message, addr)
 
 # Асинхронна функція для надсилання повідомлень кожні 30 секунд
 async def send_heartbeat():
@@ -78,6 +100,30 @@ async def handler(websocket):
             # Або обробляємо як команду
             try:
                 data = json.loads(message)
+                # Парсінг пакетів з "axes" та "buttons"
+                if "axes" in data and "buttons" in data:
+                    # Обрізання значень axes до трьох знаків після коми
+                    axes = [round(x, 3) for x in data["axes"]]
+                    buttons = data["buttons"]
+                    logging.info(f"Axes: {axes}")
+                    logging.info(f"Buttons: {[{'pressed': b['pressed'], 'value': b['value']} for b in buttons]}")
+                    # Відправка пакету UDP-клієнтам
+                    udp_message = json.dumps({
+                        "axes": axes,
+                        "buttons": buttons
+                    }).encode()
+                    if udp_server_protocol and udp_server_protocol.transport:
+                        udp_server_protocol.send_to_clients(udp_message)
+                    # Відповідь WebSocket-клієнту
+                    await websocket.send(json.dumps({
+                        "type": "parsed",
+                        "axes_count": len(axes),
+                        "buttons_count": len(buttons),
+                        "first_axis": axes[0] if axes else None,
+                        "first_button": buttons[0] if buttons else None,
+                        "axes": axes
+                    }))
+                    continue
                 if data.get("command") == "get_status":
                     status_response = {
                         "type": "status",
@@ -103,12 +149,20 @@ async def handler(websocket):
         logging.info(f"Client {websocket.remote_address} removed from active connections.")
 
 async def main():
+    global udp_server_protocol
     # Запускаємо фоновий потік для надсилання heartbeat
     heartbeat_task = asyncio.create_task(send_heartbeat())
 
+    # Запускаємо UDP-сервер
+    loop = asyncio.get_running_loop()
+    udp_server_protocol = UDPServerProtocol()
+    transport, _ = await loop.create_datagram_endpoint(
+        lambda: udp_server_protocol,
+        local_addr=("0.0.0.0", 8766)
+    )
+    logging.info("UDP Server started on udp://0.0.0.0:8766")
+
     # Запускаємо WebSocket-сервер
-    # host='0.0.0.0' дозволяє підключення з будь-якої IP-адреси
-    # port=8765 - обраний порт
     async with serve(handler, "0.0.0.0", 8765):
         logging.info("WebSocket Server started on ws://0.0.0.0:8765")
         await asyncio.Future() # Запускаємо сервер безкінечно
