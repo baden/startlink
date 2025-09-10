@@ -3,13 +3,29 @@ import threading
 import time
 import json
 
-#from gpiozero import LED
-from gpiozero import DigitalOutputDevice, PWMOutputDevice #, UART
+#Пробую і через GPIO
+import RPi.GPIO as GPIO
+GPIO.setwarnings(True)
+GPIO.setmode(GPIO.BCM)      # GPIO.BOARD не спрацювало
+
+# Також спробуємо через gpiozero
+
+# from gpiozero import DigitalOutputDevice, PWMOutputDevice, Device
+# from gpiozero.pins.lgpio import LGPIOFactory
+# # gpiozero
+# # Вказуємо lgpio як основну фабрику пінів для gpiozero
+# factory = LGPIOFactory(chip=0)
+# # Device.pin_factory = LGPioFactory()
+# Device.pin_factory = factory
+
+led_pin = 17
+servo_pin = 18
 
 #led = LED(17) # Use the BCM pin number for your LED
 # 1. Керування цифровими виходами On/Off
 # Припустимо, що у нас світлодіод підключено до GPIO 17
-led = DigitalOutputDevice(17)
+GPIO.setup(led_pin, GPIO.OUT)
+# led = DigitalOutputDevice(led_pin)
 
 # 2. Формування PPM (1..2 мсек)
 # Для PPM, що зазвичай використовується для сервоприводів, ми використовуємо PWM.
@@ -18,8 +34,13 @@ led = DigitalOutputDevice(17)
 # Тут ми будемо емулювати це значеннями duty_cycle.
 # Припустимо, сервопривід підключено до GPIO 18
 # ШИМ є ще на пінах GPIO12, GPIO13 та GPIO19
-servo = PWMOutputDevice(12, frequency=50) # Сервоприводи зазвичай працюють на частоті 50 Гц
 
+GPIO.setup(servo_pin, GPIO.OUT)
+servo = GPIO.PWM(servo_pin, 50) # Частота 50 Гц
+servo.start(7.5) # Початкове положення (1.5 мс)
+
+# servo = PWMOutputDevice(servo_pin, frequency=50) # Сервоприводи зазвичай працюють на частоті 50 Гц
+# servo.value = 0.5
 
 # SERVER_IP = "127.0.0.1"  # IP сервера
 SERVER_IP = "s.navi.cc"  # IP сервера
@@ -49,14 +70,24 @@ def listen(sock):
 
 def ppm_update():
     global latest_axes0
+    prev_axes0 = None
     while True:
         with axes_lock:
             axes0 = latest_axes0
-        # Значення axes[0] від -1 до 1
-        # Перетворюємо це в діапазон від 0.05 до 0.10 для сервоприводу
-        servo_value = 0.075 + (axes0 * 0.025)
-        print(f"axes[0]: {axes0}  servo_value: {servo_value}")
-        servo.value = servo_value
+        # Оновлюємо тільки якщо зміна axes0 > 0.05
+        if prev_axes0 is None or abs(axes0 - prev_axes0) >= 0.05:
+            # Значення axes[0] від -1 до 1
+            # Перетворюємо це в діапазон 5..10 для сервоприводу
+            duty_cycle = 7.5 + axes0 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
+            print(f"Updating servo: axes[0]={axes0}, duty_cycle={duty_cycle}")
+            servo.ChangeDutyCycle(duty_cycle)
+
+            # # Перетворюємо в діапазон 0.05..0.10
+            # servo_value = 0.05 + (axes0 + 1) * 0.025  # -1 -> 0.05, 0 -> 0.1, 1 -> 0.15
+            # print(f"Updating servo: axes[0]={axes0}, servo_value={servo_value}")
+            # servo.value = servo_value
+
+            prev_axes0 = axes0
         time.sleep(PPM_UPDATE_INTERVAL)
 
 def keep_alive(sock):
