@@ -2,8 +2,9 @@ import socket
 import threading
 import time
 import json
+from lib_syspwm import HPWM
 
-#Пробую і через GPIO
+# #Пробую і через GPIO
 import RPi.GPIO as GPIO
 GPIO.setwarnings(True)
 GPIO.setmode(GPIO.BCM)      # GPIO.BOARD не спрацювало
@@ -12,14 +13,16 @@ GPIO.setmode(GPIO.BCM)      # GPIO.BOARD не спрацювало
 
 # from gpiozero import DigitalOutputDevice, PWMOutputDevice, Device
 # from gpiozero.pins.lgpio import LGPIOFactory
-# # gpiozero
-# # Вказуємо lgpio як основну фабрику пінів для gpiozero
+# # # gpiozero
+# # # Вказуємо lgpio як основну фабрику пінів для gpiozero
 # factory = LGPIOFactory(chip=0)
-# # Device.pin_factory = LGPioFactory()
+# # # Device.pin_factory = LGPioFactory()
 # Device.pin_factory = factory
 
+# from rpi_hardware_pwm import HardwarePWM
+
 led_pin = 17
-servo_pin = 18
+# servo_pin = 18
 
 #led = LED(17) # Use the BCM pin number for your LED
 # 1. Керування цифровими виходами On/Off
@@ -35,9 +38,21 @@ GPIO.setup(led_pin, GPIO.OUT)
 # Припустимо, сервопривід підключено до GPIO 18
 # ШИМ є ще на пінах GPIO12, GPIO13 та GPIO19
 
-GPIO.setup(servo_pin, GPIO.OUT)
-servo = GPIO.PWM(servo_pin, 50) # Частота 50 Гц
-servo.start(7.5) # Початкове положення (1.5 мс)
+# GPIO.setup(servo_pin, GPIO.OUT)
+# servo = GPIO.PWM(servo_pin, 50) # Частота 50 Гц
+# servo.start(7.5) # Початкове положення (1.5 мс)
+
+# Тут це не пін, а канал
+# Нам треба /sys/class/pwm/pwmchip0/pwm2
+servo = HPWM(2)
+# if not servo.pwmX_exists():
+#     servo.create_pwmX()
+servo.set_frequency(50) # 50 Гц
+servo.set_duty_cycle(1.5)
+servo.enable()
+
+# servo = HardwarePWM(pwm_channel=1, hz=50, chip=0)
+# servo.start(7.5)
 
 # servo = PWMOutputDevice(servo_pin, frequency=50) # Сервоприводи зазвичай працюють на частоті 50 Гц
 # servo.value = 0.5
@@ -75,17 +90,20 @@ def ppm_update():
         with axes_lock:
             axes0 = latest_axes0
         # Оновлюємо тільки якщо зміна axes0 > 0.05
-        if prev_axes0 is None or abs(axes0 - prev_axes0) >= 0.05:
-            # Значення axes[0] від -1 до 1
-            # Перетворюємо це в діапазон 5..10 для сервоприводу
+        if prev_axes0 is None or abs(axes0 - prev_axes0) >= 0.01:
+            # # Значення axes[0] від -1 до 1
+            # # Перетворюємо це в діапазон 5..10 для сервоприводу
             duty_cycle = 7.5 + axes0 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
             print(f"Updating servo: axes[0]={axes0}, duty_cycle={duty_cycle}")
-            servo.ChangeDutyCycle(duty_cycle)
+            # servo.ChangeDutyCycle(duty_cycle)
+            servo.set_duty_cycle(1.5 + axes0 * 0.5)  # -1 -> 1.0, 0 -> 1.5, 1 -> 2.0
 
-            # # Перетворюємо в діапазон 0.05..0.10
+            # Перетворюємо в діапазон 0.05..0.10
             # servo_value = 0.05 + (axes0 + 1) * 0.025  # -1 -> 0.05, 0 -> 0.1, 1 -> 0.15
             # print(f"Updating servo: axes[0]={axes0}, servo_value={servo_value}")
             # servo.value = servo_value
+
+            # servo.change_duty_cycle(duty_cycle)
 
             prev_axes0 = axes0
         time.sleep(PPM_UPDATE_INTERVAL)
