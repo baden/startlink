@@ -7,7 +7,6 @@ import subprocess
 
 
 
-
 try:
     import RPi.GPIO as GPIO
     isRPi = True
@@ -28,49 +27,67 @@ else:
 
 
 # Спробую ssd1306
+# from SSD1306 import SSD1306
+# oled = SSD1306()
+# oled.ClearWhite()
 
-def ssd_init(bus):
-    bus.write_byte_data(0x3c, 0x00, 0xae)
-    bus.write_byte_data(0x3c, 0x00, 0xd5)
-    bus.write_byte_data(0x3c, 0x00, 0x80)
-    bus.write_byte_data(0x3c, 0x00, 0xa8)
-    bus.write_byte_data(0x3c, 0x00, 0x3f)
-    bus.write_byte_data(0x3c, 0x00, 0xd3)
-    bus.write_byte_data(0x3c, 0x00, 0x00)
-    bus.write_byte_data(0x3c, 0x00, 0x40)
-    bus.write_byte_data(0x3c, 0x00, 0x20)
-    bus.write_byte_data(0x3c, 0x00, 0x00)
-    bus.write_byte_data(0x3c, 0x00, 0xa1)
-    bus.write_byte_data(0x3c, 0x00, 0xc8)
-    bus.write_byte_data(0x3c, 0x00, 0xda)
-    bus.write_byte_data(0x3c, 0x00, 0x12)
-    bus.write_byte_data(0x3c, 0x00, 0x81)
-    bus.write_byte_data(0x3c, 0x00, 0xcf)
-    bus.write_byte_data(0x3c, 0x00, 0xd9)
-    bus.write_byte_data(0x3c, 0x00, 0xf1)
-    bus.write_byte_data(0x3c, 0x00, 0xdb)
-    bus.write_byte_data(0x3c, 0x00, 0x30)
-    bus.write_byte_data(0x3c, 0x00, 0x8d)
-    bus.write_byte_data(0x3c, 0x00, 0x14)
-    bus.write_byte_data(0x3c, 0x00, 0x2e)
-    bus.write_byte_data(0x3c, 0x00, 0xa4)
-    bus.write_byte_data(0x3c, 0x00, 0xa6)
-    bus.write_byte_data(0x3c, 0x00, 0xaf)
+from oled.device import ssd1306
+from oled.render import canvas
+from PIL import ImageFont, ImageDraw
 
-def position(bus, x0 = 0, x1 = 127, y0 = 0, y1 = 7):
-    bus.write_byte_data(0x3c, 0x00, 0x21)
-    bus.write_byte_data(0x3c, 0x00, x0)
-    bus.write_byte_data(0x3c, 0x00, x1)
-    bus.write_byte_data(0x3c, 0x00, 0x22)
-    bus.write_byte_data(0x3c, 0x00, y0)
-    bus.write_byte_data(0x3c, 0x00, y1)
+device = ssd1306(port=4, address=0x3C)
+font = ImageFont.load_default()
 
-import smbus
-bus = smbus.SMBus(4)
+# device.SendCommand(0xb0 + i)
+device.command(0xB0, 0x02, 0x10)
+device.data([0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F])
 
-ssd_init(bus)
-position(bus)
-bus.write_i2c_block_data(0x3c, 0x40,[0x05]*1024)
+# with canvas(device) as draw:
+#     draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
+#     draw.text((0, 0), "Hello World", font=font, fill=255)
+
+# def ssd_init(bus):
+#     bus.write_byte_data(0x3c, 0x00, 0xae)
+#     bus.write_byte_data(0x3c, 0x00, 0xd5)
+#     bus.write_byte_data(0x3c, 0x00, 0x80)
+#     bus.write_byte_data(0x3c, 0x00, 0xa8)
+#     bus.write_byte_data(0x3c, 0x00, 0x3f)
+#     bus.write_byte_data(0x3c, 0x00, 0xd3)
+#     bus.write_byte_data(0x3c, 0x00, 0x00)
+#     bus.write_byte_data(0x3c, 0x00, 0x40)
+#     bus.write_byte_data(0x3c, 0x00, 0x20)
+#     bus.write_byte_data(0x3c, 0x00, 0x00)
+#     bus.write_byte_data(0x3c, 0x00, 0xa1)
+#     bus.write_byte_data(0x3c, 0x00, 0xc8)
+#     bus.write_byte_data(0x3c, 0x00, 0xda)
+#     bus.write_byte_data(0x3c, 0x00, 0x12)
+#     bus.write_byte_data(0x3c, 0x00, 0x81)
+#     bus.write_byte_data(0x3c, 0x00, 0xcf)
+#     bus.write_byte_data(0x3c, 0x00, 0xd9)
+#     bus.write_byte_data(0x3c, 0x00, 0xf1)
+#     bus.write_byte_data(0x3c, 0x00, 0xdb)
+#     bus.write_byte_data(0x3c, 0x00, 0x30)
+#     bus.write_byte_data(0x3c, 0x00, 0x8d)
+#     bus.write_byte_data(0x3c, 0x00, 0x14)
+#     bus.write_byte_data(0x3c, 0x00, 0x2e)
+#     bus.write_byte_data(0x3c, 0x00, 0xa4)
+#     bus.write_byte_data(0x3c, 0x00, 0xa6)
+#     bus.write_byte_data(0x3c, 0x00, 0xaf)
+
+# def position(bus, x0 = 0, x1 = 127, y0 = 0, y1 = 7):
+#     bus.write_byte_data(0x3c, 0x00, 0x21)
+#     bus.write_byte_data(0x3c, 0x00, x0)
+#     bus.write_byte_data(0x3c, 0x00, x1)
+#     bus.write_byte_data(0x3c, 0x00, 0x22)
+#     bus.write_byte_data(0x3c, 0x00, y0)
+#     bus.write_byte_data(0x3c, 0x00, y1)
+
+# import smbus
+# bus = smbus.SMBus(4)
+
+# ssd_init(bus)
+# position(bus)
+# bus.write_i2c_block_data(0x3c, 0x40,[0x05]*32)
 
 # Також спробуємо через gpiozero
 
@@ -127,7 +144,7 @@ servo2.enable()
 SERVER_IP = "s.navi.cc"  # IP сервера
 SERVER_PORT = 8766       # Порт UDP-сервера
 SEND_INTERVAL = 15       # Інтервал keep-alive (секунд)
-PPM_UPDATE_INTERVAL = 0.1 # 20 мс
+PPM_UPDATE_INTERVAL = 0.02 # 20 мс
 
 def wait_for_internet(timeout=5):
     while True:
@@ -188,6 +205,11 @@ def ppm_update():
             # servo.change_duty_cycle(duty_cycle)
 
             prev_axes0 = axes0
+
+            # with canvas(device) as draw:
+            #     draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0)
+            #     draw.text((0, 0), f"{axes0}", font=font, fill=255)
+
         if prev_axes1 is None or abs(axes1 - prev_axes1) >= 0.01:
             duty_cycle = 7.5 + axes1 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
             print(f"Updating servo2: axes[1]={axes1}, duty_cycle={duty_cycle}")
