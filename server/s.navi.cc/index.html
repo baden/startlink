@@ -4,35 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone Control</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f4; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        .container { background: #fff; padding: 40px 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }
-        h1 { color: #2c3e50; margin-bottom: 20px; }
-        p { color: #555; font-size: 1.2em; }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <h1>Drone Control</h1>
-        <p>Вітаємо! Сайт Drone Control скоро буде доступний.</p>
-        <p>Зверніться до адміністратора для деталей.</p>
-    </div>
-    <div id="gamepad-status">Очікування підключення джойстика...</div>
+        <div id="gamepad-status">Очікування підключення джойстика...</div>
 
-    <div id="axes-display" class="control-group">
-        <h2>Осі</h2>
-        <div id="axis0" class="control-item">Вісь 0: 0</div>
-        <div id="axis1" class="control-item">Вісь 1: 0</div>
-        <div id="axis2" class="control-item">Вісь 2: 0</div>
-        <div id="axis3" class="control-item">Вісь 3: 0</div>
-        <!-- Додайте більше осей за потреби -->
-    </div>
+        <div id="axes-display" class="control-group">
+            <h2>Осі</h2>
+            <div id="axis0" class="control-item">A0: 0</div>
+            <div id="axis1" class="control-item">A1: 0</div>
+            <div id="axis2" class="control-item">A2: 0</div>
+            <div id="axis3" class="control-item">A3: 0</div>
+            <!-- Додайте більше осей за потреби -->
+        </div>
 
-    <div id="buttons-display" class="control-group">
-        <h2>Кнопки</h2>
-        <div id="button0" class="control-item">Кнопка 0: Не натиснута</div>
-        <div id="button1" class="control-item">Кнопка 1: Не натиснута</div>
-        <!-- Додайте більше кнопок за потреби -->
+        <div id="buttons-display" class="control-group">
+            <h2>Кнопки</h2>
+            <div id="button0" class="control-item"B0: -</div>
+            <div id="button1" class="control-item">B1: -</div>
+            <!-- Додайте більше кнопок за потреби -->
+        </div>
     </div>
 
     <script src="script.js"></script>

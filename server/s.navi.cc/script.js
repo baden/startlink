@@ -86,7 +86,7 @@ function updateAxesDisplay() {
             axisDiv.className = 'control-item';
             document.getElementById('axes-display').appendChild(axisDiv);
         }
-        axisDiv.textContent = `Вісь ${i}: ${gamepad.axes[i].toFixed(4)}`;
+        axisDiv.textContent = `${i}:${gamepad.axes[i].toFixed(2)}`;
     }
 }
 
@@ -101,7 +101,7 @@ function updateButtonsDisplay() {
             buttonDiv.className = 'control-item';
             document.getElementById('buttons-display').appendChild(buttonDiv);
         }
-        buttonDiv.textContent = `Кнопка ${i}: ${gamepad.buttons[i].pressed ? 'Натиснута' : 'Не натиснута'} (Значення: ${gamepad.buttons[i].value.toFixed(4)})`;
+        buttonDiv.textContent = `${i}:${gamepad.buttons[i].pressed ? '+' : '-'} (${gamepad.buttons[i].value.toFixed(1)})`;
     }
 }
 
