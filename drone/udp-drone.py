@@ -3,6 +3,7 @@ import threading
 import time
 import json
 from lib_syspwm import HPWM
+import subprocess
 
 # #Пробую і через GPIO
 import RPi.GPIO as GPIO
@@ -44,12 +45,17 @@ GPIO.setup(led_pin, GPIO.OUT)
 
 # Тут це не пін, а канал
 # Нам треба /sys/class/pwm/pwmchip0/pwm2
-servo = HPWM(2)
+servo1 = HPWM(1)
+servo2 = HPWM(2)
 # if not servo.pwmX_exists():
 #     servo.create_pwmX()
-servo.set_frequency(50) # 50 Гц
-servo.set_duty_cycle(1.5)
-servo.enable()
+servo1.set_frequency(50) # 50 Гц
+servo1.set_duty_cycle(1.5)
+servo1.enable()
+
+servo2.set_frequency(50) # 50 Гц
+servo2.set_duty_cycle(1.5)
+servo2.enable()
 
 # servo = HardwarePWM(pwm_channel=1, hz=50, chip=0)
 # servo.start(7.5)
@@ -63,11 +69,23 @@ SERVER_PORT = 8766       # Порт UDP-сервера
 SEND_INTERVAL = 15       # Інтервал keep-alive (секунд)
 PPM_UPDATE_INTERVAL = 0.1 # 20 мс
 
+def wait_for_internet(timeout=5):
+    while True:
+        try:
+            # Пінгуємо Google DNS
+            subprocess.check_call(["ping", "8.8.8.8", "-c", "1", "-W", str(timeout)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("Інтернет доступний.")
+            return
+        except subprocess.CalledProcessError:
+            print("Немає інтернету. Очікування...")
+            time.sleep(2)
+
 latest_axes0 = 0.0
+latest_axes1 = 0.0
 axes_lock = threading.Lock()
 
 def listen(sock):
-    global latest_axes0
+    global latest_axes0, latest_axes1
     while True:
         data, addr = sock.recvfrom(4096)
         try:
@@ -77,6 +95,7 @@ def listen(sock):
                 #print(f"axes[0]: {axes[0]}")
                 with axes_lock:
                     latest_axes0 = axes[0]
+                    latest_axes1 = axes[1]
             else:
                 print("No axes data")
         except Exception as e:
@@ -85,18 +104,21 @@ def listen(sock):
 
 def ppm_update():
     global latest_axes0
+    global latest_axes1
     prev_axes0 = None
+    prev_axes1 = None
     while True:
         with axes_lock:
             axes0 = latest_axes0
+            axes1 = latest_axes1
         # Оновлюємо тільки якщо зміна axes0 > 0.05
         if prev_axes0 is None or abs(axes0 - prev_axes0) >= 0.01:
             # # Значення axes[0] від -1 до 1
             # # Перетворюємо це в діапазон 5..10 для сервоприводу
             duty_cycle = 7.5 + axes0 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
-            print(f"Updating servo: axes[0]={axes0}, duty_cycle={duty_cycle}")
+            print(f"Updating servo1: axes[0]={axes0}, duty_cycle={duty_cycle}")
             # servo.ChangeDutyCycle(duty_cycle)
-            servo.set_duty_cycle(1.5 + axes0 * 0.5)  # -1 -> 1.0, 0 -> 1.5, 1 -> 2.0
+            servo1.set_duty_cycle(1.5 + axes0 * 0.5)  # -1 -> 1.0, 0 -> 1.5, 1 -> 2.0
 
             # Перетворюємо в діапазон 0.05..0.10
             # servo_value = 0.05 + (axes0 + 1) * 0.025  # -1 -> 0.05, 0 -> 0.1, 1 -> 0.15
@@ -106,6 +128,11 @@ def ppm_update():
             # servo.change_duty_cycle(duty_cycle)
 
             prev_axes0 = axes0
+        if prev_axes1 is None or abs(axes1 - prev_axes1) >= 0.01:
+            duty_cycle = 7.5 + axes1 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
+            print(f"Updating servo2: axes[1]={axes1}, duty_cycle={duty_cycle}")
+            servo2.set_duty_cycle(1.5 + axes1 * 0.5)  # -1 -> 1.0, 0 -> 1.5, 1 -> 2.0
+            prev_axes1 = axes1
         time.sleep(PPM_UPDATE_INTERVAL)
 
 def keep_alive(sock):
@@ -115,30 +142,45 @@ def keep_alive(sock):
         time.sleep(SEND_INTERVAL)
 
 def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("", 0))  # Вибирає випадковий локальний порт
 
-    # Відправляємо перший реєстраційний пакет
-    sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
-    print("Registration packet sent.")
+    wait_for_internet()
+    sock = None
+    while True:
+        try:
+            if sock is None:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.bind(("", 0))
+                # Відправляємо перший реєстраційний пакет
+                sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
+                print("Registration packet sent.")
 
-    # Потік для прослуховування відповідей
-    thread_listen = threading.Thread(target=listen, args=(sock,), daemon=True)
-    thread_listen.start()
+                # Потік для прослуховування відповідей
+                thread_listen = threading.Thread(target=listen, args=(sock,), daemon=True)
+                thread_listen.start()
 
-    # Потік для періодичних keep-alive
-    thread_keepalive = threading.Thread(target=keep_alive, args=(sock,), daemon=True)
-    thread_keepalive.start()
+                # Потік для періодичних keep-alive
+                thread_keepalive = threading.Thread(target=keep_alive, args=(sock,), daemon=True)
+                thread_keepalive.start()
 
-    # Потік для періодичного оновлення PPM
-    thread_ppm = threading.Thread(target=ppm_update, daemon=True)
-    thread_ppm.start()
+                # Потік для періодичного оновлення PPM
+                thread_ppm = threading.Thread(target=ppm_update, daemon=True)
+                thread_ppm.start()
 
-    try:
-        while True:
             time.sleep(1)
-    except KeyboardInterrupt:
-        print("Client stopped.")
+        except (OSError, socket.error) as e:
+            print(f"Втрата зв'язку з сервером: {e}. Перепідключення...")
+            if sock:
+                try:
+                    sock.close()
+                except:
+                    pass
+                sock = None
+            wait_for_internet()
+        except KeyboardInterrupt:
+            print("Client stopped.")
+            if sock:
+                sock.close()
+            break
 
 if __name__ == "__main__":
     main()
