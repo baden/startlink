@@ -33,10 +33,12 @@ else:
 
 from oled.device import ssd1306
 from oled.render import canvas
-from PIL import ImageFont, ImageDraw
+from PIL import ImageFont, ImageDraw, Image
 
 device = ssd1306(port=4, address=0x3C)
-font = ImageFont.load_default()
+# font = ImageFont.load_default()
+font = ImageFont.truetype(r'fonts/C&C Red Alert [INET].ttf', size=20)
+
 
 # device.SendCommand(0xb0 + i)
 # device.command(0xB0, 0x02, 0x10)
@@ -44,50 +46,9 @@ font = ImageFont.load_default()
 
 with canvas(device) as draw:
     draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
-    draw.text((0, 0), "Hello World", font=font, fill=255)
-
-# def ssd_init(bus):
-#     bus.write_byte_data(0x3c, 0x00, 0xae)
-#     bus.write_byte_data(0x3c, 0x00, 0xd5)
-#     bus.write_byte_data(0x3c, 0x00, 0x80)
-#     bus.write_byte_data(0x3c, 0x00, 0xa8)
-#     bus.write_byte_data(0x3c, 0x00, 0x3f)
-#     bus.write_byte_data(0x3c, 0x00, 0xd3)
-#     bus.write_byte_data(0x3c, 0x00, 0x00)
-#     bus.write_byte_data(0x3c, 0x00, 0x40)
-#     bus.write_byte_data(0x3c, 0x00, 0x20)
-#     bus.write_byte_data(0x3c, 0x00, 0x00)
-#     bus.write_byte_data(0x3c, 0x00, 0xa1)
-#     bus.write_byte_data(0x3c, 0x00, 0xc8)
-#     bus.write_byte_data(0x3c, 0x00, 0xda)
-#     bus.write_byte_data(0x3c, 0x00, 0x12)
-#     bus.write_byte_data(0x3c, 0x00, 0x81)
-#     bus.write_byte_data(0x3c, 0x00, 0xcf)
-#     bus.write_byte_data(0x3c, 0x00, 0xd9)
-#     bus.write_byte_data(0x3c, 0x00, 0xf1)
-#     bus.write_byte_data(0x3c, 0x00, 0xdb)
-#     bus.write_byte_data(0x3c, 0x00, 0x30)
-#     bus.write_byte_data(0x3c, 0x00, 0x8d)
-#     bus.write_byte_data(0x3c, 0x00, 0x14)
-#     bus.write_byte_data(0x3c, 0x00, 0x2e)
-#     bus.write_byte_data(0x3c, 0x00, 0xa4)
-#     bus.write_byte_data(0x3c, 0x00, 0xa6)
-#     bus.write_byte_data(0x3c, 0x00, 0xaf)
-
-# def position(bus, x0 = 0, x1 = 127, y0 = 0, y1 = 7):
-#     bus.write_byte_data(0x3c, 0x00, 0x21)
-#     bus.write_byte_data(0x3c, 0x00, x0)
-#     bus.write_byte_data(0x3c, 0x00, x1)
-#     bus.write_byte_data(0x3c, 0x00, 0x22)
-#     bus.write_byte_data(0x3c, 0x00, y0)
-#     bus.write_byte_data(0x3c, 0x00, y1)
-
-# import smbus
-# bus = smbus.SMBus(4)
-
-# ssd_init(bus)
-# position(bus)
-# bus.write_i2c_block_data(0x3c, 0x40,[0x05]*32)
+    drone_image = Image.open("images/drone.png").convert("1")
+    draw.bitmap((0, 0), drone_image, fill=1)
+    # draw.text((0, 0), "Init DRONE", font=font, fill=255)
 
 # Також спробуємо через gpiozero
 
@@ -145,6 +106,7 @@ SERVER_IP = "s.navi.cc"  # IP сервера
 SERVER_PORT = 8766       # Порт UDP-сервера
 SEND_INTERVAL = 15       # Інтервал keep-alive (секунд)
 PPM_UPDATE_INTERVAL = 0.02 # 20 мс
+OLED_UPDATE_INTERVAL = 0.5 # 0.5 секунда
 
 def wait_for_internet(timeout=5):
     while True:
@@ -217,6 +179,20 @@ def ppm_update():
             prev_axes1 = axes1
         time.sleep(PPM_UPDATE_INTERVAL)
 
+
+oled_update_predelay = 5 # Затримка перед першим оновленням OLED 5 cекунд
+
+def oled_update():
+    counter = 0
+    time.sleep(oled_update_predelay)
+    while True:
+        with canvas(device) as draw:
+            draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
+            draw.text((0, 0), f"{latest_axes0:.2f}:{latest_axes1:.2f}", font=font, fill=255)
+            draw.text((0, 14), f"Ping: {counter}", font=font, fill=255)
+        counter += 1
+        time.sleep(OLED_UPDATE_INTERVAL)
+
 def keep_alive(sock):
     while True:
         sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
@@ -247,6 +223,10 @@ def main():
                 # Потік для періодичного оновлення PPM
                 thread_ppm = threading.Thread(target=ppm_update, daemon=True)
                 thread_ppm.start()
+
+                # Потік для оновлення OLED
+                thread_oled = threading.Thread(target=oled_update, daemon=True)
+                thread_oled.start()
 
             time.sleep(1)
         except (OSError, socket.error) as e:

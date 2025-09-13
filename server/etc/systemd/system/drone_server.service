@@ -1,0 +1,16 @@
+[Unit]
+Description=Drone Server
+After=network.target
+
+[Service]
+Type=simple
+User=baden
+WorkingDirectory=/home/baden/startlink-server
+ExecStart=/home/baden/startlink-server/.venv/bin/python3 websocket_server.py
+Restart=always
+RestartSec=5
+User=baden
+Group=baden
+
+[Install]
+WantedBy=multi-user.target

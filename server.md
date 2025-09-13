@@ -53,3 +53,14 @@ sudo systemctl restart nginx
   sudo ln -s /snap/bin/certbot /usr/bin/certbot
   sudo certbot --nginx
 ```
+
+## Сервер дрона
+
+```
+sudo ln -s /home/baden/startlink-server/etc/systemd/system/drone_server.service /etc/systemd/system/drone_server.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable drone_server
+sudo systemctl start drone_server
+sudo systemctl status drone_server
+```
