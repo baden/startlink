@@ -9,7 +9,7 @@ body {
     height: 100vh;
 }
 .container {
-    background: #fff;
+    background: rgba(255, 255, 255, 0.95);
     padding: 40px 30px;
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -44,3 +44,7 @@ p {
     box-sizing: border-box;
 }
 
+.control-group > div.button-item {
+    min-width: 64px;
+    max-width: 64px;
+}

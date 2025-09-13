@@ -83,10 +83,14 @@ function updateAxesDisplay() {
         if (!axisDiv) {
             axisDiv = document.createElement('div');
             axisDiv.id = `axis${i}`;
-            axisDiv.className = 'control-item';
+            axisDiv.className = 'control-item axis-item';
             document.getElementById('axes-display').appendChild(axisDiv);
         }
-        axisDiv.textContent = `${i}:${gamepad.axes[i].toFixed(2)}`;
+        const axisValue = gamepad.axes[i];
+        axisDiv.textContent = `${i}: ${axisValue.toFixed(2)}`;
+        // Візуалізація заповнення
+        const percent = Math.round((axisValue + 1) * 50); // -1 -> 0%, 0 -> 50%, 1 -> 100%
+        axisDiv.style.background = `linear-gradient(to right, #4fc3f7 ${percent}%, #f7f7f7 ${percent}%)`;
     }
 }
 
@@ -98,10 +102,16 @@ function updateButtonsDisplay() {
         if (!buttonDiv) {
             buttonDiv = document.createElement('div');
             buttonDiv.id = `button${i}`;
-            buttonDiv.className = 'control-item';
+            buttonDiv.className = 'control-item button-item';
             document.getElementById('buttons-display').appendChild(buttonDiv);
         }
-        buttonDiv.textContent = `${i}:${gamepad.buttons[i].pressed ? '+' : '-'} (${gamepad.buttons[i].value.toFixed(1)})`;
+        const button = gamepad.buttons[i];
+        buttonDiv.textContent = `${i}: ${button.pressed ? '+' : '-'}`;
+        if (button.pressed) {
+            buttonDiv.style.background = 'linear-gradient(to right, #4fc3f7 100%, #f7f7f7 0%)';
+        } else {
+            buttonDiv.style.background = 'linear-gradient(to right, #f7f7f7 0%, #f7f7f7 100%)';
+        }
     }
 }
 
