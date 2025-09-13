@@ -3,16 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gamepad Viewer</title>
+    <title>Drone Control</title>
     <style>
-        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; }
-        #gamepad-status { margin-bottom: 20px; font-weight: bold; }
-        .control-group { margin: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        .control-item { margin-bottom: 5px; }
+        body { font-family: Arial, sans-serif; background: #f4f4f4; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        .container { background: #fff; padding: 40px 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }
+        h1 { color: #2c3e50; margin-bottom: 20px; }
+        p { color: #555; font-size: 1.2em; }
     </style>
 </head>
 <body>
-    <h1>Gamepad Viewer</h1>
+    <div class="container">
+        <h1>Drone Control</h1>
+        <p>Вітаємо! Сайт Drone Control скоро буде доступний.</p>
+        <p>Зверніться до адміністратора для деталей.</p>
+    </div>
     <div id="gamepad-status">Очікування підключення джойстика...</div>
 
     <div id="axes-display" class="control-group">

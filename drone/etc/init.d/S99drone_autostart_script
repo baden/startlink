@@ -1,0 +1,19 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        echo "Starting Drone application..."
+        # Execute your Python script in the background
+        /usr/bin/python3 /home/baden/udp-drone.py &
+        ;;
+    stop)
+        echo "Stopping my Python application..."
+        # Add commands to gracefully stop your Python application if needed
+        # For example, kill the process by name or PID
+        pkill -f udp-drone.py
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac

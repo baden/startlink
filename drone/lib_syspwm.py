@@ -20,10 +20,11 @@ import os
 # Based on https://github.com/jdimpson/syspwm/
 
 class HPWM(object):
-    chippath = "/sys/class/pwm/pwmchip0"
+    base_chippath = "/sys/class/pwm/pwmchip"
 
-    def __init__(self,pwm):
+    def __init__(self,chip_id,pwm):
         success = False
+        self.chippath = "{chippath}{chip_id}".format(chip_id=chip_id,chippath=self.base_chippath)
         self.pwm=pwm
         self.enabled = False
         self.dcycle = 0
@@ -72,6 +73,14 @@ class HPWM(object):
             self.enabled = True
         print(f"PWM: {num} -> {enable}")
         self.echo(num,enable)
+
+    # echo "normal" > polarity
+    def polarity(self,normal=True):
+        pol = "{pwmdir}/polarity".format(pwmdir=self.pwmdir)
+        if normal:
+            self.echo("normal",pol)
+        else:
+            self.echo("inversed",pol)
 
     def disable(self):
         return self.enable(disable=True)

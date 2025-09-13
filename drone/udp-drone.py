@@ -5,10 +5,25 @@ import json
 from lib_syspwm import HPWM
 import subprocess
 
-# #Пробую і через GPIO
-import RPi.GPIO as GPIO
-GPIO.setwarnings(True)
-GPIO.setmode(GPIO.BCM)      # GPIO.BOARD не спрацювало
+
+
+
+try:
+    import RPi.GPIO as GPIO
+    isRPi = True
+except ImportError:
+    isRPi = False
+
+if isRPi:
+    led_pin = 17
+    GPIO.setwarnings(True)
+    GPIO.setmode(GPIO.BCM)      # GPIO.BOARD не спрацювало
+    GPIO.setup(led_pin, GPIO.OUT)
+    servo1 = HPWM(0, 1)
+    servo2 = HPWM(0, 2)
+else:
+    servo1 = HPWM(5, 0)
+    servo2 = HPWM(6, 0)
 
 # Також спробуємо через gpiozero
 
@@ -22,13 +37,11 @@ GPIO.setmode(GPIO.BCM)      # GPIO.BOARD не спрацювало
 
 # from rpi_hardware_pwm import HardwarePWM
 
-led_pin = 17
 # servo_pin = 18
 
 #led = LED(17) # Use the BCM pin number for your LED
 # 1. Керування цифровими виходами On/Off
 # Припустимо, що у нас світлодіод підключено до GPIO 17
-GPIO.setup(led_pin, GPIO.OUT)
 # led = DigitalOutputDevice(led_pin)
 
 # 2. Формування PPM (1..2 мсек)
@@ -45,16 +58,16 @@ GPIO.setup(led_pin, GPIO.OUT)
 
 # Тут це не пін, а канал
 # Нам треба /sys/class/pwm/pwmchip0/pwm2
-servo1 = HPWM(1)
-servo2 = HPWM(2)
 # if not servo.pwmX_exists():
 #     servo.create_pwmX()
 servo1.set_frequency(50) # 50 Гц
 servo1.set_duty_cycle(1.5)
+servo1.polarity(normal=True)
 servo1.enable()
 
 servo2.set_frequency(50) # 50 Гц
 servo2.set_duty_cycle(1.5)
+servo2.polarity(normal=True)
 servo2.enable()
 
 # servo = HardwarePWM(pwm_channel=1, hz=50, chip=0)

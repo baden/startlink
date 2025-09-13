@@ -1,5 +1,115 @@
 ## Дослідження по LuckFox
 
+
+## Задіяна плата Luckfox Pico Pro (RV1106G2,128MB RAM,256 SPI NAND FLASH)
+
+Також все повинно бути актуально для Luckfox Pico Plus, Luckfox Pico Max, Luckfox Pico Ultra)
+
+Задіяна періферія:
+
+![GPIO](./LUCKFOX-PICO-PROMAX-GPIO.jpg)
+
+
+За замовченням, всі uart вимкнені, як і PWM тому робимо по
+[інструкції](https://wiki.luckfox.com/Luckfox-Pico/Luckfox-Pico-PWM#5-modify-device-tree):
+
+переконаємось де dts:
+
+<SDK directory>/project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk
+
+(Доречі, може спробуємо прибрати зайве?)
+export RK_ENABLE_ROCKCHIP_TEST=n
+export RK_ENABLE_WIFI=n
+
+Нас цікавить строчка
+RK_KERNEL_DTS=rv1106g-luckfox-pico-pro-max.dts
+
+
+правимо:
+
+sysdrv/source/kernel/arch/arm/boot/dts/rv1106g-luckfox-pico-pro-max.dts
+
+
+```
+/**********UART**********/
+&uart1 {
+	status = "okay";
+};
+/* UART3_M1 */
+&uart3 {
+	status = "okay";
+};
+
+/**** PWM *****/
+&pwm2 {
+    status = "okay";
+    pinctrl-names = "active";
+};
+
+&pwm4 {
+    status = "okay";
+    pinctrl-names = "active";
+};
+
+&pwm5 {
+    status = "okay";
+    pinctrl-names = "active";
+    pinctrl-0 = <&pwm5m2_pins>;
+};
+
+&pwm6 {
+    status = "okay";
+    pinctrl-names = "active";
+    pinctrl-0 = <&pwm6m2_pins>;
+};
+
+```
+
+Требе переконатись шо pwm5 буде саме на пінах GPIO1_C2 (а не на GPIO2_B0 де є I2C1_SCL)
+Требе переконатись шо pwm6 буде саме на пінах GPIO1_C3 (а не на GPIO2_B1 де є I2C1_SDA)
+
+
+Обираємо нашу плату та перезбираємо ядро
+
+```
+build.sh lunch
+build.sh kernel
+```
+
+Шоб все не перезбирати, я скопіював все інше з орігінальної прошиіки в
+каталог ./output/image
+
+Та виконав:
+
+```
+./build.sh updateimg
+```
+
+Далі натискаємо та тримаємо boot, та вставляємо живлення.
+
+```
+sudo ../upgrade_tool_v2.25_for_mac/upgrade_tool uf ./update.img
+```
+
+Начебто якось можна окремо прошивати boot.img, але я не зміг
+
+https://github.com/xx-7/xpg/blob/e32d4f8a1e0ce4ad418412eb4cfa72816fbfbafa/hw/board/rk/upgrade_tool.md?plain=1#L23
+
+
+## Генерація PPM
+
+Генерація на прикладі pwm6 (pin 16)
+
+```
+echo 0 > /sys/class/pwm/pwmchip6/export
+cd /sys/class/pwm/pwmchip6/pwm0
+echo "20000000" > period && echo "1500000" > duty_cycle && echo "normal" > polarity && echo 1 > enable
+```
+
+
+
+## Далі може бути неактуальне, то було ще на версії без Ethernet
+
 В мене версія без Ethernet. При спробі підключити зовнішній USB-Ethernet адаптер,
 зрозумів шо USB-Host відключен.
 
@@ -16,6 +126,7 @@ https://wiki.luckfox.com/Luckfox-Pico/Luckfox-Pico-USB
 xattr -dr com.apple.quarantine ./upgrade_tool
 ```
 
+sudo ../upgrade_tool_v2.25_for_mac/upgrade_tool uf update.img
 
 ## Пробуємо зібрати SDK
 
