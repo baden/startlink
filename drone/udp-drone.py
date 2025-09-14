@@ -26,19 +26,21 @@ else:
     servo2 = HPWM(6, 0)
 
     from periphery import GPIO
-    # GPIO pin number calculation formula: pin = bank * 32 + number
-    # GPIO group number calculation formula: number = group * 8 + X
-    # Therefore: pin = bank * 32 + (group * 8 + X)
-    # Group: (A=0, B=1, C=2, D=3)
-
-    # GPIO2_A2 = 2*32 + 0*8 + 2 = 66
     Buzzer_Pin = 66
-
     Buzzer_GPIO = GPIO(Buzzer_Pin, "out")
     Buzzer_GPIO.write(False) # LOW
 
-    # GPIO.setup(Buzzer_Pin, GPIO.OUT)
-    # GPIO.output(Buzzer_Pin, GPIO.LOW)
+def sound_buzzer(pattern, delay=0.1):
+    """
+    pattern: list of bools, True=ON, False=OFF
+    delay: seconds for each state
+    """
+    def buzzer_worker():
+        for state in pattern:
+            Buzzer_GPIO.write(state)
+            time.sleep(delay)
+        Buzzer_GPIO.write(False)
+    threading.Thread(target=buzzer_worker, daemon=True).start()
 
 # Спробую ssd1306
 # from SSD1306 import SSD1306
@@ -150,7 +152,7 @@ def listen(sock):
     global latest_axes0, latest_axes1, latest_arm_button
     while True:
         data, addr = sock.recvfrom(4096)
-        print(f"Received from server: {data.decode()}")
+        # print(f"Received from server: {data.decode()}")
         try:
             packet = json.loads(data.decode())
             command = packet.get("command", "")
@@ -158,38 +160,32 @@ def listen(sock):
                 data = packet.get("data", {})
                 axes = data.get("axes", [])
                 buttons = data.get("buttons", [])
-                if axes:
-                    print(f"axes[0]: {axes[0]}")
-                    print(f"axes[1]: {axes[1]}")
-                    with axes_lock:
-                        latest_axes0 = axes[0]
-                        latest_axes1 = axes[1]
-                else:
-                    print("No axes data", packet)
+
                 if buttons:
                     new_arm_button = buttons[0] == 1
                     if latest_arm_button != new_arm_button:
                         latest_arm_button = new_arm_button
-                        # print(f"Arm button state changed: {latest_arm_button}")
                         if isRPi:
                             GPIO.output(led_pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
                         else:
                             if latest_arm_button:
-                                Buzzer_GPIO.write(True)
-                                time.sleep(0.1)
-                                Buzzer_GPIO.write(False)
+                                sound_buzzer([True, False])
                             else:
-                                Buzzer_GPIO.write(True)
-                                time.sleep(0.1)
-                                Buzzer_GPIO.write(False)
-                                time.sleep(0.1)
-                                Buzzer_GPIO.write(True)
-                                time.sleep(0.1)
-                                Buzzer_GPIO.write(False)
-                            # Buzzer_GPIO.write(latest_arm_button) # HIGH or LOW
-                            # GPIO.output(Buzzer_Pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
-                    # latest_arm_button = buttons[0] == 1  # Припустимо, що кнопка "arm" - це перша кнопка
-                    print(f"Arm button state: {latest_arm_button}")
+                                sound_buzzer([True, False, True, False])
+                    # print(f"Arm button state: {latest_arm_button}")
+
+                if axes:
+                    # print(f"axes[0]: {axes[0]}")
+                    # print(f"axes[1]: {axes[1]}")
+                    with axes_lock:
+                        if latest_arm_button: # Оновлюємо лише якщо дрон заарміний
+                            latest_axes0 = axes[0]
+                            latest_axes1 = axes[1]
+                        else:
+                            latest_axes0 = 0.0
+                            latest_axes1 = 0.0
+                else:
+                    print("No axes data", packet)
 
         except Exception as e:
             print(f"Received from server: {data.decode()}")
@@ -272,6 +268,9 @@ def crsf_read(crsf):
 
 
 def main():
+
+    # Стартовий піск
+    sound_buzzer([True, False])
 
     crsf = CRSF(port="/dev/ttyS1", baudrate=420000)
 
