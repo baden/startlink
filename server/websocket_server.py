@@ -99,8 +99,8 @@ async def handler(websocket):
             # Або обробляємо як команду
             try:
                 data = json.loads(message)
-                if data.get("ping", False):
-                    continue
+                # if data.get("ping", False):
+                #     continue
 
                 # logging.info(f"Received from {websocket.remote_address}: {message}")
 

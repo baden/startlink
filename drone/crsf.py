@@ -16,3 +16,6 @@ class CRSF(object):
         if self.ser.in_waiting > 0:
             data = self.ser.read(self.ser.in_waiting)
             print(f"Received from CRSF: {data}")
+
+
+    def send(self, data: bytes):

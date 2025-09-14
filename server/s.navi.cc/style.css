@@ -45,6 +45,23 @@ p {
 }
 
 .control-group > div.button-item {
-    min-width: 64px;
-    max-width: 64px;
+    min-width: 48px;
+    max-width: 48px;
+}
+
+/* Для SVG або IMG всередині .gamepad-icon */
+.gamepad-icon.disconnected > svg,
+.gamepad-icon.disconnected > img {
+    fill: #888 !important;
+    color: #888 !important;
+}
+
+.gamepad-icon.connected > svg,
+.gamepad-icon.connected > img {
+    fill: rgb(74, 204, 74) !important;
+    color: rgb(65, 192, 65) !important;
+}
+
+.block {
+    display: block;
 }

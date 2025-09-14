@@ -71,7 +71,7 @@ class HPWM(object):
             if self.period<self.dcycle:
              return False # duty cycle never exceed period
             self.enabled = True
-        print(f"PWM: {num} -> {enable}")
+        # print(f"PWM: {num} -> {enable}")
         self.echo(num,enable)
 
     # echo "normal" > polarity
@@ -94,7 +94,7 @@ class HPWM(object):
         per *= 1000000 # now in nanoseconds
         self.period = int(per)
         period = "{pwmdir}/period".format(pwmdir=self.pwmdir)
-        print(f"Setting frequency: {hz} Hz -> {self.period} ns -> {period}")
+        # print(f"Setting frequency: {hz} Hz -> {self.period} ns -> {period}")
         self.echo(self.period,period)
 
     def set_duty_prop(self,proportion): # proportion 0.0 .. 100.0
@@ -115,5 +115,5 @@ class HPWM(object):
           dc = self.period
         self.dcycle = int(dc)
         duty_cycle = "{pwmdir}/duty_cycle".format(pwmdir=self.pwmdir)
-        print(f"Setting duty cycle: {self.dcycle} ns -> {duty_cycle}")
+        # print(f"Setting duty cycle: {self.dcycle} ns -> {duty_cycle}")
         self.echo(self.dcycle,duty_cycle)

@@ -44,3 +44,11 @@ IPv6: 2a01:4f8:1c1a:8b19::/64
 1	0	0x1209	0x4F54	OpenTX	Radiomaster TX12 Joystick	00000000001B
 
 Оце от бачить джойстік: https://hardwaretester.com/gamepad
+
+
+
+PPM1 - левьій борт (v-h)
+PPM2 - правьій борт (v+h)
+IO1 - лебедка вверх
+IO2 - лебедка вниз
+IO3 -

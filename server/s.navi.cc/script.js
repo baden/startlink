@@ -4,10 +4,19 @@ let ws = null;
 let reconnectTimeout = null;
 let wsConnected = false;
 
-function setGamepadStatus(text, isError = false) {
+function setGamepadStatus(text, isConneced) {
+    console.log("setGamepadStatus:", text, isConneced);
     const statusDiv = document.getElementById('gamepad-status');
     statusDiv.textContent = text;
-    statusDiv.style.color = isError ? 'red' : 'black';
+    statusDiv.style.color = isConneced ? 'black' : 'red';
+    const iconDiv = document.getElementById('gamepad-icon');
+    if (isConneced) {
+        iconDiv.classList.remove('disconnected');
+        iconDiv.classList.add('connected');
+    } else {
+        iconDiv.classList.remove('connected');
+        iconDiv.classList.add('disconnected');
+    }
 }
 
 function setConnectionStatus(text, isError = false) {
@@ -317,13 +326,15 @@ window.addEventListener("gamepadconnected", (event) => {
     // Radiomaster TX12 Joystick: Vendor: 1209 Product: 4f54
     // Деякі браузери можуть надавати ідентифікатор у форматі "Vendor_XXXX_Product_YYYY"
     // або просто текстовий опис. Вам потрібно буде перевірити формат у вашому браузері.
-    if (event.gamepad.id.includes("Vendor: 1209 Product: 4f54") || event.gamepad.id.includes("Radiomaster TX12 Joystick")) { // Або інший спосіб перевірки
-        console.log("Radiomaster TX12 підключено.", event.gamepad);
-        gamepad = event.gamepad;
-        setGamepadStatus(`Підключено: ${gamepad.id} (Індекс: ${gamepad.index})`);
-        if (!requestAnimationFrameId) { // Запускаємо цикл, якщо він ще не запущений
-            requestAnimationFrameId = requestAnimationFrame(gameLoop);
-        }
+        if (event.gamepad.id.includes("Vendor: 1209 Product: 4f54") || event.gamepad.id.includes("Radiomaster TX12 Joystick")) { // Або інший спосіб перевірки
+            console.log("Radiomaster TX12 підключено.", event.gamepad);
+            gamepad = event.gamepad;
+            // Обрізаємо все в дужках разом з дужками
+            const shortName = gamepad.id.replace(/\s*\([^)]*\)/g, "").trim();
+            setGamepadStatus(`Підключено: ${shortName}`, true);
+            if (!requestAnimationFrameId) { // Запускаємо цикл, якщо він ще не запущений
+                requestAnimationFrameId = requestAnimationFrame(gameLoop);
+            }
     } else {
         console.log("Інший джойстик підключено, але не Radiomaster TX12.");
     }
@@ -331,8 +342,9 @@ window.addEventListener("gamepadconnected", (event) => {
 
 // Обробник події відключення джойстика
 window.addEventListener("gamepaddisconnected", (event) => {
-    console.log("Gamepad disconnected from index %d: %s",
-        event.gamepad.index, event.gamepad.id);
+    setGamepadStatus('Джойстик відключено!', false);
+    // console.log("Gamepad disconnected from index %d: %s",
+    //     event.gamepad.index, event.gamepad.id);
     if (gamepad && gamepad.index === event.gamepad.index) {
         gamepad = null;
         cancelAnimationFrame(requestAnimationFrameId);

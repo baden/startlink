@@ -6,6 +6,13 @@ from lib_syspwm import HPWM
 import subprocess
 
 
+# Таймаут отримання даних від UDP-сервера
+network_data_timeout = 0  # 0 - дані є, >0 - скільки секунд немає даних
+last_udp_data_time = time.time()
+
+
+def clamp(minimum, x, maximum):
+    return max(minimum, min(x, maximum))
 
 try:
     import RPi.GPIO as GPIO
@@ -26,9 +33,32 @@ else:
     servo2 = HPWM(6, 0)
 
     from periphery import GPIO
-    Buzzer_Pin = 66
+    # GPIO pin number calculation formula: pin = bank * 32 + number
+    # GPIO group number calculation formula: number = group * 8 + X
+    # Therefore: pin = bank * 32 + (group * 8 + X)
+    # group : 2 (A=0, B=1, C=2, D=3)
+
+    # BEEPER                           | 26 | GPIO2_A2
+    Buzzer_Pin = (2 * 32) + (0 * 8) + 2
     Buzzer_GPIO = GPIO(Buzzer_Pin, "out")
     Buzzer_GPIO.write(False) # LOW
+
+    # IO1 (лебідка вгору)              |  4 | GPIO1_C7
+    # IO2 (лебідка вниз)               |  5 | GPIO1_C6
+    # IO3 ()                           |  6 | GPIO1_C5
+    # IO4                              |  7 | GPIO1_C4
+    IO1_Pin = (1 * 32) + (2 * 8) + 7
+    IO2_Pin = (1 * 32) + (2 * 8) + 6
+    IO3_Pin = (1 * 32) + (2 * 8) + 5
+    IO4_Pin = (1 * 32) + (2 * 8) + 4
+    IO1_GPIO = GPIO(IO1_Pin, "out")
+    IO2_GPIO = GPIO(IO2_Pin, "out")
+    IO3_GPIO = GPIO(IO3_Pin, "out")
+    IO4_GPIO = GPIO(IO4_Pin, "out")
+    IO1_GPIO.write(False)
+    IO2_GPIO.write(False)
+    IO3_GPIO.write(False)
+    IO4_GPIO.write(False)
 
 def sound_buzzer(pattern, delay=0.1):
     """
@@ -149,10 +179,11 @@ axes_lock = threading.Lock()
 latest_arm_button = False
 
 def listen(sock):
-    global latest_axes0, latest_axes1, latest_arm_button
+    global latest_axes0, latest_axes1, latest_arm_button, last_udp_data_time, network_data_timeout
     while True:
         data, addr = sock.recvfrom(4096)
-        # print(f"Received from server: {data.decode()}")
+        last_udp_data_time = time.time()
+        network_data_timeout = 0
         try:
             packet = json.loads(data.decode())
             command = packet.get("command", "")
@@ -172,13 +203,12 @@ def listen(sock):
                                 sound_buzzer([True, False])
                             else:
                                 sound_buzzer([True, False, True, False])
-                    # print(f"Arm button state: {latest_arm_button}")
+                    IO1_GPIO.write(buttons[1] == 1) # "A"
+                    IO2_GPIO.write(buttons[3] == 1) # "D"
 
                 if axes:
-                    # print(f"axes[0]: {axes[0]}")
-                    # print(f"axes[1]: {axes[1]}")
                     with axes_lock:
-                        if latest_arm_button: # Оновлюємо лише якщо дрон заарміний
+                        if latest_arm_button:
                             latest_axes0 = axes[0]
                             latest_axes1 = axes[1]
                         else:
@@ -192,40 +222,43 @@ def listen(sock):
             print(f"Error parsing packet: {e}")
 
 def ppm_update():
-    global latest_axes0
-    global latest_axes1
+    global latest_axes0, latest_axes1, network_data_timeout, last_udp_data_time
     prev_axes0 = None
     prev_axes1 = None
     while True:
+        now = time.time()
+        # Перевіряємо таймаут даних
+        if now - last_udp_data_time > 5:
+            network_data_timeout = now - last_udp_data_time
+            # Плавно зменшуємо latest_axes0/latest_axes1 до нуля за 3 секунди
+            with axes_lock:
+                step = PPM_UPDATE_INTERVAL / 3.0
+                if abs(latest_axes0) > 0.001:
+                    latest_axes0 -= step * latest_axes0 * 3
+                    if abs(latest_axes0) < 0.001:
+                        latest_axes0 = 0.0
+                if abs(latest_axes1) > 0.001:
+                    latest_axes1 -= step * latest_axes1 * 3
+                    if abs(latest_axes1) < 0.001:
+                        latest_axes1 = 0.0
+        else:
+            network_data_timeout = 0
+
         with axes_lock:
             axes0 = latest_axes0
             axes1 = latest_axes1
-        # Оновлюємо тільки якщо зміна axes0 > 0.05
+        # Оновлюємо тільки якщо зміна axes0 > 0.01
         if prev_axes0 is None or abs(axes0 - prev_axes0) >= 0.01:
-            # # Значення axes[0] від -1 до 1
-            # # Перетворюємо це в діапазон 5..10 для сервоприводу
             duty_cycle = 7.5 + axes0 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
-            print(f"Updating servo1: axes[0]={axes0}, duty_cycle={duty_cycle}")
-            # servo.ChangeDutyCycle(duty_cycle)
-            servo1.set_duty_cycle(1.5 + axes0 * 0.5)  # -1 -> 1.0, 0 -> 1.5, 1 -> 2.0
-
-            # Перетворюємо в діапазон 0.05..0.10
-            # servo_value = 0.05 + (axes0 + 1) * 0.025  # -1 -> 0.05, 0 -> 0.1, 1 -> 0.15
-            # print(f"Updating servo: axes[0]={axes0}, servo_value={servo_value}")
-            # servo.value = servo_value
-
-            # servo.change_duty_cycle(duty_cycle)
-
+            # print(f"Updating servo1: axes[0]={axes0}, duty_cycle={duty_cycle}")
+            # Правий борт axes0+axes1:
+            servo1.set_duty_cycle(1.5 + axes0 * 0.5)
             prev_axes0 = axes0
 
-            # with canvas(device) as draw:
-            #     draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0)
-            #     draw.text((0, 0), f"{axes0}", font=font, fill=255)
-
         if prev_axes1 is None or abs(axes1 - prev_axes1) >= 0.01:
-            duty_cycle = 7.5 + axes1 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
-            print(f"Updating servo2: axes[1]={axes1}, duty_cycle={duty_cycle}")
-            servo2.set_duty_cycle(1.5 + axes1 * 0.5)  # -1 -> 1.0, 0 -> 1.5, 1 -> 2.0
+            duty_cycle = 7.5 + axes1 * 2.5
+            # print(f"Updating servo2: axes[1]={axes1}, duty_cycle={duty_cycle}")
+            servo2.set_duty_cycle(1.5 + axes1 * 0.5)
             prev_axes1 = axes1
         time.sleep(PPM_UPDATE_INTERVAL)
 
@@ -258,13 +291,12 @@ def keep_alive(sock):
         print("Keep-alive packet sent.")
         time.sleep(SEND_INTERVAL)
 
-from crsf import CRSF
+# from crsf import CRSF
 
-
-def crsf_read(crsf):
-    while True:
-        crsf.process()
-        time.sleep(0.1)
+# def crsf_read(crsf):
+#     while True:
+#         crsf.process()
+#         time.sleep(0.1)
 
 
 def main():
@@ -272,7 +304,7 @@ def main():
     # Стартовий піск
     sound_buzzer([True, False])
 
-    crsf = CRSF(port="/dev/ttyS1", baudrate=420000)
+    # crsf = CRSF(port="/dev/ttyS1", baudrate=420000)
 
     wait_for_internet()
     sock = None
@@ -303,8 +335,8 @@ def main():
                 thread_oled.start()
 
                 # Потік для читання з CRSF
-                thread_crsf = threading.Thread(target=crsf_read, args=(crsf,))
-                thread_crsf.start()
+                # thread_crsf = threading.Thread(target=crsf_read, args=(crsf,))
+                # thread_crsf.start()
 
             time.sleep(1)
         except (OSError, socket.error) as e:
