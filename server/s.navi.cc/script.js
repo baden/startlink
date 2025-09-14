@@ -23,7 +23,7 @@ function connectWebSocket() {
     ws.onopen = () => {
         wsConnected = true;
         setConnectionStatus('WebSocket підключено!');
-        ws.send(JSON.stringify({ command: "get_status" }));
+        ws.send(JSON.stringify({ command: "connectd", id: navigator.userAgent }));
     };
 
     ws.onmessage = (event) => {
@@ -77,17 +77,122 @@ if ('wakeLock' in navigator) {
     requestWakeLock();
 }
 
+// Мапінг осей і кнопок Radiomaster TX12
+// Осьові індекси можуть відрізнятися в залежності від браузера і ОС
+// Нижче наведено типовий мапінг для Radiomaster TX12
+
+// Комбінацію будемо визначати по кількості осей і кнопок
+
+// ---------------------
+// Комбінація для [7,24]
+
+// Осьові індекси:
+// 0: RH, Правий стик горизонталь
+// 1: RV, Правий стик вертикаль
+// 2: LV, Лівий стик вертикаль
+// 3: LH, Лівий стик горизонталь
+// 4: Повторює Лівий стик горизонталь
+// 5: S1 (ліве колесо)
+// 6: S2 (праве колесо)
+
+// Індекси кнопок:
+// 0: E, Лівий дальній перемикач
+// 1: A, Ліва кнопка
+// 3: B, Ливій ближній перемикач
+// 4: D, Права кнопка
+// 6: F, Правий дальній перемикач
+// 7: С, Правий ближній перемикач
+// 8: S1 (дубль, дискретний)
+// 9: S2 (дубль, дискретний)
+
+// ---------------------
+// Комбінація для [4,17]
+
+// Осьові індекси:
+// 0: RH, Правий стик горизонталь
+// 1: RV, Правий стик вертикаль
+// 2: LV, Лівий стик вертикаль
+// 3: LH, Лівий стик горизонталь
+
+// Індекси кнопок:
+// 0: E, Лівий дальній перемикач
+// 1: A, Ліва кнопка
+// 2: B, Ливій ближній перемикач
+// 3: D, Права кнопка
+// 4: F, Правий дальній перемикач
+// 5: С, Правий ближній перемикач
+// 6: S1 (дискретний)
+// 7: S2 ( дискретний)
+
+function prepareData(gamepad) {
+    if (!gamepad) return null;
+    const round3 = v => Math.round(v * 1000) / 1000;
+    if (gamepad.axes.length === 7 && gamepad.buttons.length === 24) {
+        // Комбінація для [7,24]
+        return {
+            axes: [
+                /*RH:*/ round3(gamepad.axes[0]),
+                /*RV:*/ round3(gamepad.axes[1]),
+                /*LV:*/ round3(gamepad.axes[2]),
+                /*LH:*/ round3(gamepad.axes[3]),
+                /*S1_wheel:*/ round3(gamepad.axes[5]),
+                /*S2_wheel:*/ round3(gamepad.axes[6])
+            ],
+            buttons: [
+                /*E:*/ gamepad.buttons[0].pressed?1:0,
+                /*A:*/ gamepad.buttons[1].pressed?1:0,
+                /*B:*/ gamepad.buttons[3].pressed?1:0,
+                /*D:*/ gamepad.buttons[4].pressed?1:0,
+                /*F:*/ gamepad.buttons[6].pressed?1:0,
+                /*C:*/ gamepad.buttons[7].pressed?1:0,
+                /*S1:*/ gamepad.buttons[8].pressed?1:0,
+                /*S2:*/ gamepad.buttons[9].pressed?1:0
+            ]
+        };
+    } else if (gamepad.axes.length === 4 && gamepad.buttons.length === 17) {
+        // Комбінація для [4,17]
+        return {
+            axes: [
+                /*RH:*/ round3(gamepad.axes[0]),
+                /*RV:*/ round3(gamepad.axes[1]),
+                /*LV:*/ round3(gamepad.axes[2]),
+                /*LH:*/ round3(gamepad.axes[3]),
+                /*S1_wheel:*/ 0.0,
+                /*S2_wheel:*/ 0.0
+            ],
+            buttons: [
+                /*E:*/ gamepad.buttons[0].pressed?1:0,
+                /*A:*/ gamepad.buttons[1].pressed?1:0,
+                /*B:*/ gamepad.buttons[2].pressed?1:0,
+                /*D:*/ gamepad.buttons[3].pressed?1:0,
+                /*F:*/ gamepad.buttons[4].pressed?1:0,
+                /*C:*/ gamepad.buttons[5].pressed?1:0,
+                /*S1:*/ gamepad.buttons[6].pressed?1:0,
+                /*S2:*/ gamepad.buttons[7].pressed?1:0
+            ]
+        };
+    } else {
+        // Невідома комбінація
+        return {
+            axes: gamepad.axes.map(axis => round3(axis)),
+            buttons: gamepad.buttons.map(button => (button.pressed?1:0)) // Надсилаємо 1 або 0 замість true/false
+        };
+    }
+
+}
+
+
 // Змінні для керування частотою відправки
 let lastAxes = [];
 let lastButtons = [];
 let lastSendTime = 0;
-const sendInterval = 500; // мс
+const sendInterval = 1000; // 1000 мс
 
 function isGamepadChanged() {
     if (!gamepad) return false;
     // Перевірка осей
     for (let i = 0; i < gamepad.axes.length; i++) {
-        if (lastAxes[i] === undefined || Math.abs(gamepad.axes[i] - lastAxes[i]) > 0.001) {
+        if (lastAxes[i] === undefined || Math.abs(gamepad.axes[i] - lastAxes[i]) > 0.003) {
             return true;
         }
     }
@@ -109,15 +214,21 @@ function updateGamepadStatus() {
 
         const currentTime = Date.now();
         let needSend = false;
+        let ping = false;
         if (isGamepadChanged()) {
             needSend = true;
+            ping = false;
         } else if (currentTime - lastSendTime > sendInterval) {
             needSend = true;
+            ping = true;
         }
         if (wsConnected && ws && ws.readyState === WebSocket.OPEN && needSend) {
             const data = {
-                axes: gamepad.axes,
-                buttons: gamepad.buttons.map(button => ({ pressed: button.pressed, value: button.value }))
+                command: "joy_update",
+                ping: ping,
+                data: prepareData(gamepad)
+                // axes: gamepad.axes,
+                // buttons: gamepad.buttons.map(button => ({ pressed: button.pressed, value: button.value }))
             };
             ws.send(JSON.stringify(data));
             lastSendTime = currentTime;

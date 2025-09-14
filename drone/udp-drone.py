@@ -127,16 +127,22 @@ def listen(sock):
     global latest_axes0, latest_axes1
     while True:
         data, addr = sock.recvfrom(4096)
+        print(f"Received from server: {data.decode()}")
         try:
             packet = json.loads(data.decode())
-            axes = packet.get("axes", [])
-            if axes:
-                #print(f"axes[0]: {axes[0]}")
-                with axes_lock:
-                    latest_axes0 = axes[0]
-                    latest_axes1 = axes[1]
-            else:
-                print("No axes data")
+            command = packet.get("command", "")
+            if command == "joy_update":
+                data = packet.get("data", {})
+                axes = data.get("axes", [])
+                buttons = data.get("buttons", [])
+                if axes:
+                    print(f"axes[0]: {axes[0]}")
+                    print(f"axes[1]: {axes[1]}")
+                    with axes_lock:
+                        latest_axes0 = axes[0]
+                        latest_axes1 = axes[1]
+                else:
+                    print("No axes data", packet)
         except Exception as e:
             print(f"Received from server: {data.decode()}")
             print(f"Error parsing packet: {e}")

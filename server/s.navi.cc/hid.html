@@ -7,43 +7,50 @@
 </head>
 <body>
     <h1>WebHID Data Reader</h1>
-    <button id="connectButton">Connect to HID Device</button>
-    <div id="output"></div>
+        <button id="connectHID">Connect to HID Device</button>
+        <button id="connectUSB" style="display:none">Connect via USB</button>
+        <div id="output"></div>
 
-    <script>
-        const connectButton = document.getElementById('connectButton');
+        <script>
+        const connectHID = document.getElementById('connectHID');
+        const connectUSB = document.getElementById('connectUSB');
         const outputDiv = document.getElementById('output');
         let device;
 
-        connectButton.addEventListener('click', async () => {
+        // Feature detection
+        if (navigator.hid) {
+            connectHID.style.display = '';
+            connectUSB.style.display = 'none';
+        } else if (navigator.usb) {
+            connectHID.style.display = 'none';
+            connectUSB.style.display = '';
+        } else {
+            connectHID.style.display = 'none';
+            connectUSB.style.display = 'none';
+            outputDiv.textContent = 'Neither WebHID nor WebUSB is supported on this device.';
+        }
+
+        // WebHID logic
+        connectHID.addEventListener('click', async () => {
             try {
-                // Request access to a HID device
-                // You can specify filters to narrow down the device selection
                 const vid = 4617;
                 const pid = 20308;
                 const devices = await navigator.hid.requestDevice({ filters: [{ vendorId: vid, productId: pid }] });
-
                 if (devices.length > 0) {
                     device = devices[0];
                     await device.open();
                     outputDiv.textContent = `Connected to: ${device.productName}`;
-
-                    // Register an event listener for input reports
                     device.addEventListener('inputreport', event => {
                         const { data, reportId } = event;
                         const dataArray = new Uint8Array(data.buffer);
                         outputDiv.textContent = `\nReceived Report ID: ${reportId}, Data: ${dataArray.join(', ')}`;
-                        // console.log(`Received Report ID: ${reportId}, Data: ${dataArray.join(', ')}`);
                     });
-
-                    // Listen for device disconnection
                     navigator.hid.addEventListener('disconnect', event => {
                         if (event.device === device) {
                             outputDiv.textContent += '\nDevice disconnected.';
                             device = null;
                         }
                     });
-
                 } else {
                     outputDiv.textContent = 'No device selected.';
                 }
@@ -52,6 +59,37 @@
                 outputDiv.textContent = `Error: ${error.message}`;
             }
         });
-    </script>
+
+        // WebUSB logic
+        connectUSB.addEventListener('click', async () => {
+            try {
+                // Example: request any USB device (can add filters for vendorId/productId)
+                const device = await navigator.usb.requestDevice({ filters: [] });
+                await device.open();
+                if (device.configuration === null) {
+                    await device.selectConfiguration(1);
+                }
+                // Claim first interface (may need to adjust for your device)
+                await device.claimInterface(0);
+                outputDiv.textContent = `Connected to USB device: ${device.productName || device.manufacturerName}`;
+
+                // Try to read data (example: bulk transfer IN, endpoint 1)
+                try {
+                    const result = await device.transferIn(1, 64); // endpointNumber, length
+                    if (result.data) {
+                        const dataArray = new Uint8Array(result.data.buffer);
+                        outputDiv.textContent += `\nReceived USB data: ${dataArray.join(', ')}`;
+                    } else {
+                        outputDiv.textContent += '\nNo data received.';
+                    }
+                } catch (err) {
+                    outputDiv.textContent += `\nError reading USB data: ${err.message}`;
+                }
+            } catch (error) {
+                console.error('Error connecting to USB device:', error);
+                outputDiv.textContent = `Error: ${error.message}`;
+            }
+        });
+        </script>
 </body>
 </html>

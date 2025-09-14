@@ -68,8 +68,8 @@ async def send_heartbeat():
 # Основна функція для обробки WebSocket-з'єднань
 async def handler(websocket):
     # Show websocket type name and methods
-    logging.info(f"WebSocket type: {type(websocket)}")
-    logging.info(f"WebSocket methods: {dir(websocket)}")
+    # logging.info(f"WebSocket type: {type(websocket)}")
+    # logging.info(f"WebSocket methods: {dir(websocket)}")
 
     client_path = "/"
     # client_path = websocket.path
@@ -92,7 +92,6 @@ async def handler(websocket):
     try:
         async for message in websocket:
             # Логуємо вхідні дані
-            logging.info(f"Received from {websocket.remote_address}: {message}")
 
             # Приклад: віддзеркалюємо повідомлення назад клієнту
             # await websocket.send(f"Server received: {message}")
@@ -100,29 +99,42 @@ async def handler(websocket):
             # Або обробляємо як команду
             try:
                 data = json.loads(message)
-                # Парсінг пакетів з "axes" та "buttons"
-                if "axes" in data and "buttons" in data:
-                    # Обрізання значень axes до трьох знаків після коми
-                    axes = [round(x, 3) for x in data["axes"]]
-                    buttons = data["buttons"]
-                    logging.info(f"Axes: {axes}")
-                    logging.info(f"Buttons: {[{'pressed': b['pressed'], 'value': b['value']} for b in buttons]}")
+                if data.get("ping", False):
+                    continue
+
+                # logging.info(f"Received from {websocket.remote_address}: {message}")
+
+                # {.."command": "joy_update"..}
+                if data.get("command") == "joy_update":
+                    logging.info(f"Joy update received from {websocket.remote_address}: {message}")
+                    payload = data.get("data", {})
                     # Відправка пакету UDP-клієнтам
-                    udp_message = json.dumps({
-                        "axes": axes,
-                        "buttons": buttons
-                    }).encode()
                     if udp_server_protocol and udp_server_protocol.transport:
-                        udp_server_protocol.send_to_clients(udp_message)
-                    # Відповідь WebSocket-клієнту
-                    await websocket.send(json.dumps({
-                        "type": "parsed",
-                        "axes_count": len(axes),
-                        "buttons_count": len(buttons),
-                        "first_axis": axes[0] if axes else None,
-                        "first_button": buttons[0] if buttons else None,
-                        "axes": axes
-                    }))
+                        udp_server_protocol.send_to_clients(json.dumps({"command": "joy_update", "data": payload}).encode())
+
+                # # Парсінг пакетів з "axes" та "buttons"
+                # if "axes" in data and "buttons" in data:
+                #     # Обрізання значень axes до трьох знаків після коми
+                #     axes = [round(x, 3) for x in data["axes"]]
+                #     buttons = data["buttons"]
+                #     logging.info(f"Axes: {axes}")
+                #     logging.info(f"Buttons: {[{'pressed': b['pressed'], 'value': b['value']} for b in buttons]}")
+                #     # Відправка пакету UDP-клієнтам
+                #     udp_message = json.dumps({
+                #         "axes": axes,
+                #         "buttons": buttons
+                #     }).encode()
+                #     if udp_server_protocol and udp_server_protocol.transport:
+                #         udp_server_protocol.send_to_clients(udp_message)
+                #     # Відповідь WebSocket-клієнту
+                #     await websocket.send(json.dumps({
+                #         "type": "parsed",
+                #         "axes_count": len(axes),
+                #         "buttons_count": len(buttons),
+                #         "first_axis": axes[0] if axes else None,
+                #         "first_button": buttons[0] if buttons else None,
+                #         "axes": axes
+                #     }))
                     continue
                 if data.get("command") == "get_status":
                     status_response = {
