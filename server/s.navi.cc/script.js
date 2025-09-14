@@ -4,8 +4,14 @@ let ws = null;
 let reconnectTimeout = null;
 let wsConnected = false;
 
-function setConnectionStatus(text, isError = false) {
+function setGamepadStatus(text, isError = false) {
     const statusDiv = document.getElementById('gamepad-status');
+    statusDiv.textContent = text;
+    statusDiv.style.color = isError ? 'red' : 'black';
+}
+
+function setConnectionStatus(text, isError = false) {
+    const statusDiv = document.getElementById('connection-status');
     statusDiv.textContent = text;
     statusDiv.style.color = isError ? 'red' : 'black';
 }
@@ -21,7 +27,7 @@ function connectWebSocket() {
     };
 
     ws.onmessage = (event) => {
-        console.log("Received:", event.data);
+        // console.log("Received:", event.data);
     };
 
     ws.onclose = (event) => {
@@ -49,26 +55,74 @@ function connectWebSocket() {
 
 connectWebSocket();
 
+// Не даємо пристрою засинати (Android)
+if ('wakeLock' in navigator) {
+    let wakeLock = null;
+    async function requestWakeLock() {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            wakeLock.addEventListener('release', () => {
+                console.log('Wake Lock was released');
+            });
+            console.log('Wake Lock is active');
+        } catch (err) {
+            console.error('Wake Lock error:', err);
+        }
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (wakeLock !== null && document.visibilityState === 'visible') {
+            requestWakeLock();
+        }
+    });
+    requestWakeLock();
+}
+
 // Змінні для керування частотою відправки
-// let lastSendTime = 0;
-// const sendInterval = 1000 / 5; // 1000 мс / 5 відправок = 200 мс між відправками
+let lastAxes = [];
+let lastButtons = [];
+let lastSendTime = 0;
+const sendInterval = 500; // мс
+
+function isGamepadChanged() {
+    if (!gamepad) return false;
+    // Перевірка осей
+    for (let i = 0; i < gamepad.axes.length; i++) {
+        if (lastAxes[i] === undefined || Math.abs(gamepad.axes[i] - lastAxes[i]) > 0.001) {
+            return true;
+        }
+    }
+    // Перевірка кнопок
+    for (let i = 0; i < gamepad.buttons.length; i++) {
+        if (lastButtons[i] === undefined || gamepad.buttons[i].pressed !== lastButtons[i].pressed || Math.abs(gamepad.buttons[i].value - lastButtons[i].value) > 0.001) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // Функція для оновлення статусу джойстика
 function updateGamepadStatus() {
     if (gamepad) {
-        setConnectionStatus(`Підключено: ${gamepad.id} (Індекс: ${gamepad.index})`);
+        // setConnectionStatus(`Підключено: ${gamepad.id} (Індекс: ${gamepad.index})`);
         updateAxesDisplay();
         updateButtonsDisplay();
 
-        // Перевірка часу перед відправкою через WebSocket
         const currentTime = Date.now();
-        if (wsConnected && ws && ws.readyState === WebSocket.OPEN /*&& (currentTime - lastSendTime > sendInterval)*/) {
+        let needSend = false;
+        if (isGamepadChanged()) {
+            needSend = true;
+        } else if (currentTime - lastSendTime > sendInterval) {
+            needSend = true;
+        }
+        if (wsConnected && ws && ws.readyState === WebSocket.OPEN && needSend) {
             const data = {
                 axes: gamepad.axes,
                 buttons: gamepad.buttons.map(button => ({ pressed: button.pressed, value: button.value }))
             };
             ws.send(JSON.stringify(data));
-            //lastSendTime = currentTime; // Оновлюємо час останньої відправки
+            lastSendTime = currentTime;
+            lastAxes = gamepad.axes.slice();
+            lastButtons = gamepad.buttons.map(b => ({ pressed: b.pressed, value: b.value }));
         }
     } else {
         setConnectionStatus('Очікування підключення джойстика...');
@@ -117,14 +171,25 @@ function updateButtonsDisplay() {
 
 // Основний цикл для опитування джойстика
 function gameLoop() {
+    // console.log("gamepad:", gamepad);
     const gamepads = navigator.getGamepads();
-    if (gamepads.length > 0) {
-        // Ми припускаємо, що нас цікавить перший підключений джойстик
-        // Можливо, вам потрібно буде додати логіку для вибору конкретного джойстика за Vendor/Product ID
-        gamepad = gamepads[0]; // або шукати по gamepad.id, щоб знайти ваш Radiomaster
-    } else {
-        gamepad = null;
+    // let gamepad_ = null;
+    for(const gp of gamepads) {
+        // console.log("gp:", gp);
+        if (gp && (gp.id.includes("Vendor: 1209 Product: 4f54") || gp.id.includes("Radiomaster TX12 Joystick"))) {
+            gamepad = gp;
+            // console.log("gamepad:", gamepad);
+            break;
+        }
     }
+    // console.log("gamepads:", [gamepads]);
+    // if (gamepads.length > 0) {
+    //     // Ми припускаємо, що нас цікавить перший підключений джойстик
+    //     // Можливо, вам потрібно буде додати логіку для вибору конкретного джойстика за Vendor/Product ID
+    //     gamepad = gamepads[0]; // або шукати по gamepad.id, щоб знайти ваш Radiomaster
+    // } else {
+    //     gamepad = null;
+    // }
 
     updateGamepadStatus();
     requestAnimationFrameId = requestAnimationFrame(gameLoop);
@@ -142,7 +207,9 @@ window.addEventListener("gamepadconnected", (event) => {
     // Деякі браузери можуть надавати ідентифікатор у форматі "Vendor_XXXX_Product_YYYY"
     // або просто текстовий опис. Вам потрібно буде перевірити формат у вашому браузері.
     if (event.gamepad.id.includes("Vendor: 1209 Product: 4f54") || event.gamepad.id.includes("Radiomaster TX12 Joystick")) { // Або інший спосіб перевірки
+        console.log("Radiomaster TX12 підключено.", event.gamepad);
         gamepad = event.gamepad;
+        setGamepadStatus(`Підключено: ${gamepad.id} (Індекс: ${gamepad.index})`);
         if (!requestAnimationFrameId) { // Запускаємо цикл, якщо він ще не запущений
             requestAnimationFrameId = requestAnimationFrame(gameLoop);
         }
@@ -168,7 +235,7 @@ window.addEventListener("gamepaddisconnected", (event) => {
 const initialGamepads = navigator.getGamepads();
 if (initialGamepads.length > 0) {
     // Перевірте, чи є серед них ваш Radiomaster
-    console.log("gpamepads:", [initialGamepads]);
+    // console.log("gpamepads:", [initialGamepads]);
     for (const gp of initialGamepads) {
         if (gp && (gp.id.includes("Vendor_1209_Product_4f54") || gp.id.includes("RadioMaster TX12 Joystick"))) {
             gamepad = gp;

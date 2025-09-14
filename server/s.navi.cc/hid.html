@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebHID Data Reader</title>
+</head>
+<body>
+    <h1>WebHID Data Reader</h1>
+    <button id="connectButton">Connect to HID Device</button>
+    <div id="output"></div>
+
+    <script>
+        const connectButton = document.getElementById('connectButton');
+        const outputDiv = document.getElementById('output');
+        let device;
+
+        connectButton.addEventListener('click', async () => {
+            try {
+                // Request access to a HID device
+                // You can specify filters to narrow down the device selection
+                const vid = 4617;
+                const pid = 20308;
+                const devices = await navigator.hid.requestDevice({ filters: [{ vendorId: vid, productId: pid }] });
+
+                if (devices.length > 0) {
+                    device = devices[0];
+                    await device.open();
+                    outputDiv.textContent = `Connected to: ${device.productName}`;
+
+                    // Register an event listener for input reports
+                    device.addEventListener('inputreport', event => {
+                        const { data, reportId } = event;
+                        const dataArray = new Uint8Array(data.buffer);
+                        outputDiv.textContent = `\nReceived Report ID: ${reportId}, Data: ${dataArray.join(', ')}`;
+                        // console.log(`Received Report ID: ${reportId}, Data: ${dataArray.join(', ')}`);
+                    });
+
+                    // Listen for device disconnection
+                    navigator.hid.addEventListener('disconnect', event => {
+                        if (event.device === device) {
+                            outputDiv.textContent += '\nDevice disconnected.';
+                            device = null;
+                        }
+                    });
+
+                } else {
+                    outputDiv.textContent = 'No device selected.';
+                }
+            } catch (error) {
+                console.error('Error connecting to HID device:', error);
+                outputDiv.textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
