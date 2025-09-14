@@ -10,6 +10,21 @@
 ![GPIO](./LUCKFOX-PICO-PROMAX-GPIO.jpg)
 
 
+Шо куди підключено:
+
+Функція                          | Пін | HW
+---------------------------------|----|-----
+PPM1 (правий стік горизонтально) | 15 | PWM5
+PPM2 (правий стік вертикально)   | 16 | PWM6
+RF-IN (вхід з приймача) RX       | 20 | UART4_RX
+RF-IN (вихід на телеметрію) TX   | 19 | UART4_TX
+RF-OUT (вихід на контролер) TX   | 21 | UART1_TX
+RF-OUT (вхід телеметрії) RX      | 22 | UART1_RX
+OLED (SDA)                       | 24 | I2C4_SDA
+OLED (SCL)                       | 25 | I2C4_SCL
+BEEPER                           | 26 | GPIO2_A2
+
+
 За замовченням, всі uart вимкнені, як і PWM тому робимо по
 [інструкції](https://wiki.luckfox.com/Luckfox-Pico/Luckfox-Pico-PWM#5-modify-device-tree):
 

@@ -21,10 +21,24 @@ if isRPi:
     servo1 = HPWM(0, 1)
     servo2 = HPWM(0, 2)
 else:
+    # Luckfox Pico Pro
     servo1 = HPWM(5, 0)
     servo2 = HPWM(6, 0)
 
+    from periphery import GPIO
+    # GPIO pin number calculation formula: pin = bank * 32 + number
+    # GPIO group number calculation formula: number = group * 8 + X
+    # Therefore: pin = bank * 32 + (group * 8 + X)
+    # Group: (A=0, B=1, C=2, D=3)
 
+    # GPIO2_A2 = 2*32 + 0*8 + 2 = 66
+    Buzzer_Pin = 66
+
+    Buzzer_GPIO = GPIO(Buzzer_Pin, "out")
+    Buzzer_GPIO.write(False) # LOW
+
+    # GPIO.setup(Buzzer_Pin, GPIO.OUT)
+    # GPIO.output(Buzzer_Pin, GPIO.LOW)
 
 # Спробую ssd1306
 # from SSD1306 import SSD1306
@@ -34,6 +48,7 @@ else:
 from oled.device import ssd1306
 from oled.render import canvas
 from PIL import ImageFont, ImageDraw, Image
+import PIL.ImageOps
 
 device = ssd1306(port=4, address=0x3C)
 # font = ImageFont.load_default()
@@ -49,6 +64,12 @@ with canvas(device) as draw:
     drone_image = Image.open("images/drone.png").convert("1")
     draw.bitmap((0, 0), drone_image, fill=1)
     # draw.text((0, 0), "Init DRONE", font=font, fill=255)
+
+
+armed_image = Image.open("images/armed.png").convert("1")
+armed_image = PIL.ImageOps.invert(armed_image)
+disarmed_image = Image.open("images/disarmed.png").convert("1")
+disarmed_image = PIL.ImageOps.invert(disarmed_image)
 
 # Також спробуємо через gpiozero
 
@@ -123,8 +144,10 @@ latest_axes0 = 0.0
 latest_axes1 = 0.0
 axes_lock = threading.Lock()
 
+latest_arm_button = False
+
 def listen(sock):
-    global latest_axes0, latest_axes1
+    global latest_axes0, latest_axes1, latest_arm_button
     while True:
         data, addr = sock.recvfrom(4096)
         print(f"Received from server: {data.decode()}")
@@ -143,6 +166,31 @@ def listen(sock):
                         latest_axes1 = axes[1]
                 else:
                     print("No axes data", packet)
+                if buttons:
+                    new_arm_button = buttons[0] == 1
+                    if latest_arm_button != new_arm_button:
+                        latest_arm_button = new_arm_button
+                        # print(f"Arm button state changed: {latest_arm_button}")
+                        if isRPi:
+                            GPIO.output(led_pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
+                        else:
+                            if latest_arm_button:
+                                Buzzer_GPIO.write(True)
+                                time.sleep(0.1)
+                                Buzzer_GPIO.write(False)
+                            else:
+                                Buzzer_GPIO.write(True)
+                                time.sleep(0.1)
+                                Buzzer_GPIO.write(False)
+                                time.sleep(0.1)
+                                Buzzer_GPIO.write(True)
+                                time.sleep(0.1)
+                                Buzzer_GPIO.write(False)
+                            # Buzzer_GPIO.write(latest_arm_button) # HIGH or LOW
+                            # GPIO.output(Buzzer_Pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
+                    # latest_arm_button = buttons[0] == 1  # Припустимо, що кнопка "arm" - це перша кнопка
+                    print(f"Arm button state: {latest_arm_button}")
+
         except Exception as e:
             print(f"Received from server: {data.decode()}")
             print(f"Error parsing packet: {e}")
@@ -189,6 +237,7 @@ def ppm_update():
 oled_update_predelay = 5 # Затримка перед першим оновленням OLED 5 cекунд
 
 def oled_update():
+    global latest_axes0, latest_axes1, latest_arm_button
     counter = 0
     time.sleep(oled_update_predelay)
     while True:
@@ -196,6 +245,14 @@ def oled_update():
             draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
             draw.text((0, 0), f"{latest_axes0:.2f}:{latest_axes1:.2f}", font=font, fill=255)
             draw.text((0, 14), f"Ping: {counter}", font=font, fill=255)
+
+            if latest_arm_button:
+                # draw.bitmap((90, 0), armed_image, fill=1)
+                draw.text((90, 0), f"ARM", font=font, fill=255)
+            else:
+                #draw.bitmap((90, 0), disarmed_image, fill=1)
+                draw.text((90, 0), f"DIS", font=font, fill=255)
+
         counter += 1
         time.sleep(OLED_UPDATE_INTERVAL)
 
@@ -205,10 +262,22 @@ def keep_alive(sock):
         print("Keep-alive packet sent.")
         time.sleep(SEND_INTERVAL)
 
+from crsf import CRSF
+
+
+def crsf_read(crsf):
+    while True:
+        crsf.process()
+        time.sleep(0.1)
+
+
 def main():
+
+    crsf = CRSF(port="/dev/ttyS1", baudrate=420000)
 
     wait_for_internet()
     sock = None
+
     while True:
         try:
             if sock is None:
@@ -233,6 +302,10 @@ def main():
                 # Потік для оновлення OLED
                 thread_oled = threading.Thread(target=oled_update, daemon=True)
                 thread_oled.start()
+
+                # Потік для читання з CRSF
+                thread_crsf = threading.Thread(target=crsf_read, args=(crsf,))
+                thread_crsf.start()
 
             time.sleep(1)
         except (OSError, socket.error) as e:
