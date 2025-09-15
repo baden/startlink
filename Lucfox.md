@@ -142,6 +142,13 @@ sudo ../upgrade_tool_v2.25_for_mac/upgrade_tool uf ./update.img
 https://github.com/xx-7/xpg/blob/e32d4f8a1e0ce4ad418412eb4cfa72816fbfbafa/hw/board/rk/upgrade_tool.md?plain=1#L23
 
 
+## Додавання кастомних драйверів
+
+Хотів би якось приколхозити нормально OLED, через драйвер
+
+https://github.com/bdcabreran/ssd1306-linux/blob/master/README.md
+
+
 ## Генерація PPM
 
 Генерація на прикладі pwm6 (pin 16)

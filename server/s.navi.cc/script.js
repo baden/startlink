@@ -373,4 +373,14 @@ if (initialGamepads.length > 0) {
 }
 
 
+// Обробник кнопки перезапуску дрона
+document.getElementById('restart-drone').addEventListener('click', () => {
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ command: "restart" }));
+        // alert("Команда перезапуску дрона відправлена.");
+    } else {
+        // alert("WebSocket не підключено. Неможливо відправити команду.");
+    }
+});
+
 // ws.onopen, ws.onmessage, ws.onclose, ws.onerror тепер у connectWebSocket()

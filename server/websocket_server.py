@@ -106,12 +106,18 @@ async def handler(websocket):
 
                 # {.."command": "joy_update"..}
                 if data.get("command") == "joy_update":
-                    logging.info(f"Joy update received from {websocket.remote_address}: {message}")
+                    if not data.get("ping", False):
+                        logging.info(f"Joy update received from {websocket.remote_address}: {message}")
                     payload = data.get("data", {})
                     # Відправка пакету UDP-клієнтам
                     if udp_server_protocol and udp_server_protocol.transport:
                         udp_server_protocol.send_to_clients(json.dumps({"command": "joy_update", "data": payload}).encode())
 
+                if data.get("command") == "restart":
+                    logging.info(f"Received restart command from {websocket.remote_address}")
+                    # Відправка пакету UDP-клієнтам
+                    if udp_server_protocol and udp_server_protocol.transport:
+                        udp_server_protocol.send_to_clients(json.dumps({"command": "restart"}).encode())
                 # # Парсінг пакетів з "axes" та "buttons"
                 # if "axes" in data and "buttons" in data:
                 #     # Обрізання значень axes до трьох знаків після коми

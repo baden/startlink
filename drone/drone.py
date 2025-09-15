@@ -1,10 +1,13 @@
 import socket
+import sys
 import threading
 import time
 import json
 from lib_syspwm import HPWM
 import subprocess
 
+# Глобальний прапорець для завершення процесу
+should_exit = False
 
 # Таймаут отримання даних від UDP-сервера
 network_data_timeout = 0  # 0 - дані є, >0 - скільки секунд немає даних
@@ -180,51 +183,62 @@ latest_arm_button = False
 
 def listen(sock):
     global latest_axes0, latest_axes1, latest_arm_button, last_udp_data_time, network_data_timeout
-    while True:
-        data, addr = sock.recvfrom(4096)
-        last_udp_data_time = time.time()
-        network_data_timeout = 0
+    global should_exit
+    while not should_exit:
         try:
-            packet = json.loads(data.decode())
-            command = packet.get("command", "")
-            if command == "joy_update":
-                data = packet.get("data", {})
-                axes = data.get("axes", [])
-                buttons = data.get("buttons", [])
+            data, addr = sock.recvfrom(4096)
+            last_udp_data_time = time.time()
+            network_data_timeout = 0
+            try:
+                packet = json.loads(data.decode())
+                command = packet.get("command", "")
+                if command == "joy_update":
+                    data = packet.get("data", {})
+                    axes = data.get("axes", [])
+                    buttons = data.get("buttons", [])
 
-                if buttons:
-                    new_arm_button = buttons[0] == 1
-                    if latest_arm_button != new_arm_button:
-                        latest_arm_button = new_arm_button
-                        if isRPi:
-                            GPIO.output(led_pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
-                        else:
-                            if latest_arm_button:
-                                sound_buzzer([True, False])
+                    if buttons:
+                        new_arm_button = buttons[0] == 1
+                        if latest_arm_button != new_arm_button:
+                            latest_arm_button = new_arm_button
+                            if isRPi:
+                                GPIO.output(led_pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
                             else:
-                                sound_buzzer([True, False, True, False])
-                    IO1_GPIO.write(buttons[1] == 1) # "A"
-                    IO2_GPIO.write(buttons[3] == 1) # "D"
+                                if latest_arm_button:
+                                    sound_buzzer([True, False])
+                                else:
+                                    sound_buzzer([True, False, True, False])
+                        IO1_GPIO.write(buttons[1] == 1) # "A"
+                        IO2_GPIO.write(buttons[3] == 1) # "D"
 
-                if axes:
-                    with axes_lock:
-                        if latest_arm_button:
-                            latest_axes0 = axes[0]
-                            latest_axes1 = axes[1]
-                        else:
-                            latest_axes0 = 0.0
-                            latest_axes1 = 0.0
-                else:
-                    print("No axes data", packet)
+                    if axes:
+                        with axes_lock:
+                            if latest_arm_button:
+                                latest_axes0 = axes[0]
+                                latest_axes1 = axes[1]
+                            else:
+                                latest_axes0 = 0.0
+                                latest_axes1 = 0.0
+                    else:
+                        print("No axes data", packet)
 
+                if command == "restart":
+                    print("Received restart command")
+                    should_exit = True
+
+            except Exception as e:
+                print(f"Received from server: {data.decode()}")
+                print(f"Error parsing packet: {e}")
+        except socket.timeout:
+            continue
         except Exception as e:
-            print(f"Received from server: {data.decode()}")
-            print(f"Error parsing packet: {e}")
+            print(f"Listen error: {e}")
+            break
 
 def ppm_update():
     global latest_axes0, latest_axes1, network_data_timeout, last_udp_data_time
-    prev_axes0 = None
-    prev_axes1 = None
+    prev_axes0 = 0.0
+    prev_axes1 = 0.0
     while True:
         now = time.time()
         # Перевіряємо таймаут даних
@@ -248,18 +262,34 @@ def ppm_update():
             axes0 = latest_axes0
             axes1 = latest_axes1
         # Оновлюємо тільки якщо зміна axes0 > 0.01
+        # axes0 - horizontal (ліворуч(-1)/праворуч(+1))
+        # axes1 - vertical (вперед(+1)/назад(-1))
         if prev_axes0 is None or abs(axes0 - prev_axes0) >= 0.01:
-            duty_cycle = 7.5 + axes0 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
+            # duty_cycle = 7.5 + axes0 * 2.5  # -1 -> 5, 0 -> 7.5, 1 -> 10
             # print(f"Updating servo1: axes[0]={axes0}, duty_cycle={duty_cycle}")
-            # Правий борт axes0+axes1:
-            servo1.set_duty_cycle(1.5 + axes0 * 0.5)
+            # servo1.set_duty_cycle(1.5 + axes0 * 0.5)
             prev_axes0 = axes0
 
+            # Лівий борт: prev_axes0 + prev_axes1:
+            # Правий борт: prev_axes1 - prev_axes0
+            left_servo = prev_axes0 + prev_axes1
+            right_servo = prev_axes1 - prev_axes0
+            servo1.set_duty_cycle(clamp(1.0, 1.5 + right_servo * 0.5, 2.0))
+            servo2.set_duty_cycle(clamp(1.0, 1.5 + left_servo * 0.5, 2.0))
+
         if prev_axes1 is None or abs(axes1 - prev_axes1) >= 0.01:
-            duty_cycle = 7.5 + axes1 * 2.5
+            # duty_cycle = 7.5 + axes1 * 2.5
             # print(f"Updating servo2: axes[1]={axes1}, duty_cycle={duty_cycle}")
-            servo2.set_duty_cycle(1.5 + axes1 * 0.5)
+            # servo2.set_duty_cycle(1.5 + axes1 * 0.5)
             prev_axes1 = axes1
+
+            # Лівий борт: prev_axes0 + prev_axes1:
+            # Правий борт: prev_axes1 - prev_axes0
+            left_servo = prev_axes0 + prev_axes1
+            right_servo = prev_axes1 - prev_axes0
+            servo1.set_duty_cycle(clamp(1.0, 1.5 + right_servo * 0.5, 2.0))
+            servo2.set_duty_cycle(clamp(1.0, 1.5 + left_servo * 0.5, 2.0))
+
         time.sleep(PPM_UPDATE_INTERVAL)
 
 
@@ -309,10 +339,12 @@ def main():
     wait_for_internet()
     sock = None
 
+    global should_exit
     while True:
         try:
             if sock is None:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(1.0)
                 sock.bind(("", 0))
                 # Відправляємо перший реєстраційний пакет
                 sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
@@ -338,6 +370,17 @@ def main():
                 # thread_crsf = threading.Thread(target=crsf_read, args=(crsf,))
                 # thread_crsf.start()
 
+            if should_exit:
+                print("Exiting by restart command")
+                try:
+                    with canvas(device) as draw:
+                        draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
+                        draw.text((10, 10), "Rebooting", font=font, fill=255)
+                except Exception as e:
+                    print(f"OLED error: {e}")
+                if sock:
+                    sock.close()
+                break
             time.sleep(1)
         except (OSError, socket.error) as e:
             print(f"Втрата зв'язку з сервером: {e}. Перепідключення...")
@@ -353,6 +396,8 @@ def main():
             if sock:
                 sock.close()
             break
+    import sys
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

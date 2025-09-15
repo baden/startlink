@@ -77,6 +77,9 @@ while true; do
             # Розпаковуємо новий архів у директорію проєкту
             gunzip -c "$ARCHIVE_PATH" | tar xf - -C "$LOCAL_PROJECT_DIR"
 
+            chmod +x "$LOCAL_PROJECT_DIR/run.sh"
+            chmod +x /etc/init.d/S99drone_autostart_script
+
             # Зберігаємо нову версію локально
             echo "$REMOTE_VERSION" > "$LOCAL_VERSION_FILE"
             echo "Оновлення до версії $REMOTE_VERSION завершено успішно."
