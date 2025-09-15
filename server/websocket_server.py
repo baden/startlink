@@ -5,6 +5,7 @@ import datetime
 import json
 import logging
 import socket
+from aiohttp import web
 
 # Налаштування логування
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -12,8 +13,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Зберігатимемо активні WebSocket-з'єднання
 connected_clients = set()
 
+
 # Зберігатимемо адреси UDP-клієнтів як словник: id -> addr
 udp_clients = dict()
+# Таймстампи останніх UDP-пакетів для кожного дрона
+udp_last_packet = dict()
 
 # UDP-сервер: приймає повідомлення та реєструє клієнтів
 class UDPServerProtocol:
@@ -26,25 +30,37 @@ class UDPServerProtocol:
 
     def datagram_received(self, data, addr):
         logging.info(f"UDP packet received from {addr}: {data}")
-        # Зараз є два види пакетів:
-        # {"command": "register", "id": "ar29wHJT"}
-        # {"command": "keep_alive", "id": "ar29wHJT"}
         try:
             json_data = json.loads(data)
             command = json_data.get("command", "")
             id = json_data.get("id", "unknown")
-            # І на register і на keep_alive додаємо (або оновлюємо) клієнта. Зберігаємо id.
             udp_clients[id] = addr
+            udp_last_packet[id] = datetime.datetime.now().isoformat()
         except json.JSONDecodeError:
             logging.error(f"Invalid JSON received from {addr}: {data}")
-            return  # Зупиняємо обробку, якщо JSON недійсний
-
-        # Можна додати обробку вхідних UDP-пакетів тут
-
+            return
     def send_to_clients(self, drone_id: str, message: bytes):
         addr = udp_clients.get(drone_id)
         if addr:
             self.transport.sendto(message, addr)
+# --- HTTP API ---
+async def api_info(request):
+    # /api/info
+    drones = [
+        {"id": drone_id, "ip": addr[0]} for drone_id, addr in udp_clients.items()
+    ]
+    return web.json_response({"drones": drones})
+
+async def api_drone_info(request):
+    # /api/drone/{drone_id}/info
+    drone_id = request.match_info.get('drone_id')
+    ts = udp_last_packet.get(drone_id)
+    return web.json_response({"drone_id": drone_id, "last_udp_timestamp": ts})
+
+
+    drone_id = request.match_info.get('drone_id')
+    ts = udp_last_packet.get(drone_id)
+    return web.json_response({"drone_id": drone_id, "last_udp_timestamp": ts})
 
 # Асинхронна функція для надсилання повідомлень кожні 30 секунд
 async def send_heartbeat():
@@ -193,6 +209,16 @@ async def main():
         local_addr=("0.0.0.0", 8766)
     )
     logging.info("UDP Server started on udp://0.0.0.0:8766")
+
+    # HTTP API
+    app = web.Application()
+    app.router.add_get('/api/info', api_info)
+    app.router.add_get('/api/drone/{drone_id}/info', api_drone_info)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8787)
+    await site.start()
+    logging.info("HTTP API started on http://0.0.0.0:8787")
 
     # Запускаємо WebSocket-сервер
     async with serve(handler, "0.0.0.0", 8765):
