@@ -6,6 +6,14 @@ import json
 from lib_syspwm import HPWM
 import subprocess
 
+import uuid
+import base64
+
+mac = uuid.getnode()
+mac_bytes = mac.to_bytes(6, 'big')
+mac_b64 = base64.b64encode(mac_bytes).decode('utf-8')
+# print(mac_b64)  # Наприклад: 'ABEiM0RVZne='
+
 # Глобальний прапорець для завершення процесу
 should_exit = False
 
@@ -88,7 +96,7 @@ import PIL.ImageOps
 
 device = ssd1306(port=4, address=0x3C)
 # font = ImageFont.load_default()
-font = ImageFont.truetype(r'fonts/C&C Red Alert [INET].ttf', size=20)
+font = ImageFont.truetype(r'fonts/C&C Red Alert [INET].ttf', size=22)
 
 
 # device.SendCommand(0xb0 + i)
@@ -296,15 +304,18 @@ def ppm_update():
 
 oled_update_predelay = 5 # Затримка перед першим оновленням OLED 5 cекунд
 
+# Глобальний прапорець для завершення потоку oled_update
+should_exit_oled = False
+
 def oled_update():
-    global latest_axes0, latest_axes1, latest_arm_button
+    global latest_axes0, latest_axes1, latest_arm_button, should_exit_oled
     counter = 0
     time.sleep(oled_update_predelay)
-    while True:
+    while not should_exit_oled:
         with canvas(device) as draw:
             draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
-            draw.text((0, 0), f"{latest_axes0:.2f}:{latest_axes1:.2f}", font=font, fill=255)
-            draw.text((0, 14), f"Ping: {counter}", font=font, fill=255)
+            draw.text((0, 0), f"{latest_axes0:.1f}:{latest_axes1:.1f}", font=font, fill=255)
+            draw.text((0, 16), f"ID: {mac_b64}", font=font, fill=255)
 
             if latest_arm_button:
                 # draw.bitmap((90, 0), armed_image, fill=1)
@@ -318,7 +329,9 @@ def oled_update():
 
 def keep_alive(sock):
     while True:
-        sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
+        # sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
+        packet = f'{{"command": "keep_alive", "id": "{mac_b64}"}}'
+        sock.sendto(packet.encode('utf-8'), (SERVER_IP, SERVER_PORT))
         print("Keep-alive packet sent.")
         time.sleep(SEND_INTERVAL)
 
@@ -348,7 +361,8 @@ def main():
                 sock.settimeout(1.0)
                 sock.bind(("", 0))
                 # Відправляємо перший реєстраційний пакет
-                sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
+                packet = f'{{"command": "register", "id": "{mac_b64}"}}'
+                sock.sendto(packet.encode('utf-8'), (SERVER_IP, SERVER_PORT))
                 print("Registration packet sent.")
 
                 # Потік для прослуховування відповідей
@@ -373,6 +387,9 @@ def main():
 
             if should_exit:
                 print("Exiting by restart command")
+                should_exit_oled = True
+                # Wait a bit for the OLED thread to finish
+                time.sleep(0.3)
                 try:
                     with canvas(device) as draw:
                         draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)

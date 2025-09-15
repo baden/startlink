@@ -3,6 +3,7 @@ let requestAnimationFrameId = null;
 let ws = null;
 let reconnectTimeout = null;
 let wsConnected = false;
+let droneId = localStorage.getItem('droneId') || '';
 
 function setGamepadStatus(text, isConneced) {
     console.log("setGamepadStatus:", text, isConneced);
@@ -235,9 +236,8 @@ function updateGamepadStatus() {
             const data = {
                 command: "joy_update",
                 ping: ping,
+                droneId: droneId,
                 data: prepareData(gamepad)
-                // axes: gamepad.axes,
-                // buttons: gamepad.buttons.map(button => ({ pressed: button.pressed, value: button.value }))
             };
             ws.send(JSON.stringify(data));
             lastSendTime = currentTime;
@@ -373,14 +373,54 @@ if (initialGamepads.length > 0) {
 }
 
 
-// Обробник кнопки перезапуску дрона
-document.getElementById('restart-drone').addEventListener('click', () => {
-    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ command: "restart" }));
-        // alert("Команда перезапуску дрона відправлена.");
-    } else {
-        // alert("WebSocket не підключено. Неможливо відправити команду.");
+// Відкриття/закриття модального вікна налаштувань + LocalStorage для назви дрона
+document.addEventListener('DOMContentLoaded', function() {
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettings = document.getElementById('close-settings');
+    const droneIdInput = document.getElementById('drone-id');
+
+    // Завантажити назву дрона з LocalStorage при старті
+    if (droneIdInput) {
+        droneIdInput.value = droneId;
     }
+
+    settingsBtn.addEventListener('click', function() {
+        settingsModal.style.display = 'block';
+        // Під час відкриття модального — оновити поле з LocalStorage
+        if (droneIdInput) {
+            droneIdInput.value = localStorage.getItem('droneId') || '';
+        }
+    });
+    closeSettings.addEventListener('click', function() {
+        settingsModal.style.display = 'none';
+    });
+    window.addEventListener('click', function(event) {
+        if (event.target === settingsModal) {
+            settingsModal.style.display = 'none';
+        }
+    });
+
+    // Зберігати назву дрона при зміні та оновлювати глобальну змінну
+    if (droneIdInput) {
+        droneIdInput.addEventListener('input', function() {
+            localStorage.setItem('droneId', droneIdInput.value);
+            droneId = droneIdInput.value;
+        });
+    }
+
+
+    // Обробник кнопки перезапуску дрона
+    document.getElementById('restart-drone').addEventListener('click', () => {
+        if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ command: "restart" }));
+            // alert("Команда перезапуску дрона відправлена.");
+        } else {
+            // alert("WebSocket не підключено. Неможливо відправити команду.");
+        }
+    });
+
 });
+
 
 // ws.onopen, ws.onmessage, ws.onclose, ws.onerror тепер у connectWebSocket()
