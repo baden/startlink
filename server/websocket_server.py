@@ -12,8 +12,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Зберігатимемо активні WebSocket-з'єднання
 connected_clients = set()
 
-# Зберігатимемо адреси UDP-клієнтів
-udp_clients = set()
+# Зберігатимемо адреси UDP-клієнтів як словник: id -> addr
+udp_clients = dict()
 
 # UDP-сервер: приймає повідомлення та реєструє клієнтів
 class UDPServerProtocol:
@@ -34,18 +34,17 @@ class UDPServerProtocol:
             command = json_data.get("command", "")
             id = json_data.get("id", "unknown")
             # І на register і на keep_alive додаємо (або оновлюємо) клієнта. Зберігаємо id.
-            udp_clients.add((id, addr))
+            udp_clients[id] = addr
         except json.JSONDecodeError:
             logging.error(f"Invalid JSON received from {addr}: {data}")
             return  # Зупиняємо обробку, якщо JSON недійсний
 
-        # udp_clients.add(addr)
         # Можна додати обробку вхідних UDP-пакетів тут
 
     def send_to_clients(self, drone_id: str, message: bytes):
-        for id, addr in udp_clients:
-            if id == drone_id:
-                self.transport.sendto(message, addr)
+        addr = udp_clients.get(drone_id)
+        if addr:
+            self.transport.sendto(message, addr)
 
 # Асинхронна функція для надсилання повідомлень кожні 30 секунд
 async def send_heartbeat():

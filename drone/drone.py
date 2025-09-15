@@ -393,7 +393,7 @@ def main():
                 try:
                     with canvas(device) as draw:
                         draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
-                        draw.text((10, 10), "Rebooting", font=font, fill=255)
+                        draw.text((10, 10), "Rebooting...", font=font, fill=255)
                 except Exception as e:
                     print(f"OLED error: {e}")
                 if sock:
