@@ -9,6 +9,18 @@ import subprocess
 import uuid
 import base64
 
+from oled.device import ssd1306
+from oled.render import canvas
+from PIL import ImageFont, ImageDraw, Image
+import PIL.ImageOps
+
+try:
+    import RPi.GPIO as GPIO
+    isRPi = True
+except ImportError:
+    isRPi = False
+
+
 mac = uuid.getnode()
 mac_bytes = mac.to_bytes(6, 'big')
 mac_b64 = base64.b64encode(mac_bytes).decode('utf-8')
@@ -22,14 +34,19 @@ network_data_timeout = 0  # 0 - дані є, >0 - скільки секунд н
 last_udp_data_time = time.time()
 
 
+# Стан. Трохи заплутався, так шо нормалізу все.
+# Осі 0 та 1 - це осі керування.
+actual_axis_0 = 0.0
+actual_axis_1 = 0.0
+actual_arm_state = False
+
+#latest_axes0 = 0.0
+#latest_axes1 = 0.0
+axes_lock = threading.Lock()
+
 def clamp(minimum, x, maximum):
     return max(minimum, min(x, maximum))
 
-try:
-    import RPi.GPIO as GPIO
-    isRPi = True
-except ImportError:
-    isRPi = False
 
 if isRPi:
     led_pin = 17
@@ -89,10 +106,6 @@ def sound_buzzer(pattern, delay=0.1):
 # oled = SSD1306()
 # oled.ClearWhite()
 
-from oled.device import ssd1306
-from oled.render import canvas
-from PIL import ImageFont, ImageDraw, Image
-import PIL.ImageOps
 
 device = ssd1306(port=4, address=0x3C)
 # font = ImageFont.load_default()
@@ -187,14 +200,10 @@ def wait_for_internet(timeout=5):
             print("Немає інтернету. Очікування...")
             time.sleep(2)
 
-latest_axes0 = 0.0
-latest_axes1 = 0.0
-axes_lock = threading.Lock()
-
-latest_arm_button = False
 
 def listen(sock):
-    global latest_axes0, latest_axes1, latest_arm_button, last_udp_data_time, network_data_timeout
+    global actual_axis_0, actual_axis_1, actual_arm_state
+    global last_udp_data_time, network_data_timeout
     global should_exit
     global udp_control_last_timestamp
     while not should_exit:
@@ -210,29 +219,32 @@ def listen(sock):
                     axes = data.get("axes", [])
                     buttons = data.get("buttons", [])
 
-                    if buttons:
+                    # Керування по радіо має пріоритет
+                    have_radio_control = (time.time() - crsf_control_last_timestamp > 5.0)
+
+                    if have_radio_control and buttons:
                         new_arm_button = buttons[0] == 1
-                        if latest_arm_button != new_arm_button:
-                            latest_arm_button = new_arm_button
+                        if actual_arm_state != new_arm_button:
+                            actual_arm_state = new_arm_button
                             if isRPi:
-                                GPIO.output(led_pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
+                                GPIO.output(led_pin, GPIO.HIGH if actual_arm_state else GPIO.LOW)
                             else:
-                                if latest_arm_button:
+                                if actual_arm_state:
                                     sound_buzzer([True, False])
                                 else:
                                     sound_buzzer([True, False, True, False])
                         IO1_GPIO.write(buttons[1] == 0) # "A"
                         IO2_GPIO.write(buttons[3] == 0) # "D"
 
-                    if axes:
+                    if have_radio_control and axes:
                         udp_control_last_timestamp = time.time()
                         with axes_lock:
-                            if latest_arm_button:
-                                latest_axes0 = axes[0]
-                                latest_axes1 = axes[1]
+                            if actual_arm_state:
+                                actual_axis_0 = axes[0]
+                                actual_axis_1 = axes[1]
                             else:
-                                latest_axes0 = 0.0
-                                latest_axes1 = 0.0
+                                actual_axis_0 = 0.0
+                                actual_axis_1 = 0.0
                     else:
                         print("No axes data", packet)
 
@@ -250,16 +262,17 @@ def listen(sock):
             break
 
 def update_servos():
-    global prev_axes0, prev_axes1
-    # Лівий борт: prev_axes0 + prev_axes1:
-    # Правий борт: prev_axes1 - prev_axes0
-    left_servo = prev_axes0 + prev_axes1
-    right_servo = prev_axes1 - prev_axes0
+    global actual_axis_0, actual_axis_1
+    # Лівий борт: actual_axis_0 + actual_axis_1:
+    # Правий борт: actual_axis_1 - actual_axis_0
+    left_servo = actual_axis_0 + actual_axis_1
+    right_servo = actual_axis_1 - actual_axis_0
     servo1.set_duty_cycle(clamp(1.0, 1.5 + right_servo * 0.5, 2.0))
     servo2.set_duty_cycle(clamp(1.0, 1.5 + left_servo * 0.5, 2.0))
 
 def ppm_update():
-    global latest_axes0, latest_axes1, network_data_timeout, last_udp_data_time
+    global actual_axis_0, actual_axis_1
+    global network_data_timeout, last_udp_data_time
     prev_axes0 = 0.0
     prev_axes1 = 0.0
     while True:
@@ -270,20 +283,20 @@ def ppm_update():
             # Плавно зменшуємо latest_axes0/latest_axes1 до нуля за 3 секунди
             with axes_lock:
                 step = PPM_UPDATE_INTERVAL / 3.0
-                if abs(latest_axes0) > 0.001:
-                    latest_axes0 -= step * latest_axes0 * 3
-                    if abs(latest_axes0) < 0.001:
-                        latest_axes0 = 0.0
-                if abs(latest_axes1) > 0.001:
-                    latest_axes1 -= step * latest_axes1 * 3
-                    if abs(latest_axes1) < 0.001:
-                        latest_axes1 = 0.0
+                if abs(actual_axis_0) > 0.001:
+                    actual_axis_0 -= step * actual_axis_0 * 3
+                    if abs(actual_axis_0) < 0.001:
+                        actual_axis_0 = 0.0
+                if abs(actual_axis_1) > 0.001:
+                    actual_axis_1 -= step * actual_axis_1 * 3
+                    if abs(actual_axis_1) < 0.001:
+                        actual_axis_1 = 0.0
         else:
             network_data_timeout = 0
 
         with axes_lock:
-            axes0 = latest_axes0
-            axes1 = latest_axes1
+            axes0 = actual_axis_0
+            axes1 = actual_axis_1
         # Оновлюємо тільки якщо зміна axes0 > 0.01
         # axes0 - horizontal (ліворуч(-1)/праворуч(+1))
         # axes1 - vertical (вперед(+1)/назад(-1))
@@ -310,16 +323,16 @@ oled_update_predelay = 5 # Затримка перед першим оновле
 should_exit_oled = False
 
 def oled_update():
-    global latest_axes0, latest_axes1, latest_arm_button, should_exit_oled
+    global actual_axis_0, actual_axis_1, actual_arm_state, should_exit_oled
     counter = 0
     time.sleep(oled_update_predelay)
     while not should_exit_oled:
         with canvas(device) as draw:
             draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
-            draw.text((0, 0), f"{latest_axes0:.1f}:{latest_axes1:.1f}", font=font, fill=255)
+            draw.text((0, 0), f"{actual_axis_0:.1f}:{actual_axis_1:.1f}", font=font, fill=255)
             draw.text((0, 16), f"ID: {mac_b64}", font=font, fill=255)
 
-            if latest_arm_button:
+            if actual_arm_state:
                 # draw.bitmap((90, 0), armed_image, fill=1)
                 draw.text((90, 0), f"ARM", font=font, fill=255)
             else:
@@ -327,11 +340,11 @@ def oled_update():
                 draw.text((90, 0), f"DIS", font=font, fill=255)
 
             if time.time() - crsf_control_last_timestamp < 5.0:
-                draw.text((60, 0), f"R", font=font, fill=255)
+                draw.text((74, 0), f"R", font=font, fill=255)
             elif time.time() - udp_control_last_timestamp < 5.0:
-                draw.text((60, 0), f"S", font=font, fill=255)
+                draw.text((74, 0), f"S", font=font, fill=255)
             else:
-                draw.text((60, 0), f"-", font=font, fill=255)
+                draw.text((74, 0), f"-", font=font, fill=255)
 
         counter += 1
         time.sleep(OLED_UPDATE_INTERVAL)
@@ -351,8 +364,8 @@ latest_crsf_timestamp = 0
 
 def crsf_read(crsf):
     global latest_crsf_channels, latest_crsf_timestamp
-    global latest_arm_button
-    global prev_axes0, prev_axes1
+    global actual_arm_state
+    global actual_axis_0, actual_axis_1
     global crsf_control_last_timestamp
 
     while True:
@@ -374,20 +387,20 @@ def crsf_read(crsf):
                 new_arm_button = latest_crsf_channels[4] > 0.5
 
                 if new_arm_button:
-                    prev_axes0 = latest_crsf_channels[0]
-                    prev_axes1 = latest_crsf_channels[1]
+                    actual_axis_0 = latest_crsf_channels[0]
+                    actual_axis_1 = latest_crsf_channels[1]
                 else:
-                    prev_axes0 = 0.0
-                    prev_axes1 = 0.0
+                    actual_axis_0 = 0.0
+                    actual_axis_1 = 0.0
 
                 update_servos()
 
-                if latest_arm_button != new_arm_button:
-                    latest_arm_button = new_arm_button
+                if actual_arm_state != new_arm_button:
+                    actual_arm_state = new_arm_button
                     if isRPi:
-                        GPIO.output(led_pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
+                        GPIO.output(led_pin, GPIO.HIGH if actual_arm_state else GPIO.LOW)
                     else:
-                        if latest_arm_button:
+                        if actual_arm_state:
                             sound_buzzer([True, False])
                         else:
                             sound_buzzer([True, False, True, False])
