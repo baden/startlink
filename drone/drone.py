@@ -58,10 +58,11 @@ else:
     IO2_GPIO = GPIO(IO2_Pin, "out")
     IO3_GPIO = GPIO(IO3_Pin, "out")
     IO4_GPIO = GPIO(IO4_Pin, "out")
-    IO1_GPIO.write(False)
-    IO2_GPIO.write(False)
-    IO3_GPIO.write(False)
-    IO4_GPIO.write(False)
+    # Активний рівень - LOW
+    IO1_GPIO.write(True)
+    IO2_GPIO.write(True)
+    IO3_GPIO.write(True)
+    IO4_GPIO.write(True)
 
 def sound_buzzer(pattern, delay=0.1):
     """
@@ -208,8 +209,8 @@ def listen(sock):
                                     sound_buzzer([True, False])
                                 else:
                                     sound_buzzer([True, False, True, False])
-                        IO1_GPIO.write(buttons[1] == 1) # "A"
-                        IO2_GPIO.write(buttons[3] == 1) # "D"
+                        IO1_GPIO.write(buttons[1] == 0) # "A"
+                        IO2_GPIO.write(buttons[3] == 0) # "D"
 
                     if axes:
                         with axes_lock:
