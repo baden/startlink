@@ -36,6 +36,26 @@ DEBUG_RX (tty)                   |  2 | UART2_RX
 GND                              |  3 | GND
 
 
+
+## Треба перепрошити кастомну збірку
+
+TBD
+
+
+## Встановлення та запуск
+
+Сподіваюсь це не знадобиться, і все шо треба, буде вже в кастомній збірці.
+
+А поки робимо вручну
+
+```
+cd /root
+wget -qO- http://s.navi.cc/drone/install.sh | sh
+```
+
+
+## Кастомна збірка
+
 За замовченням, всі uart вимкнені, як і PWM тому робимо по
 [інструкції](https://wiki.luckfox.com/Luckfox-Pico/Luckfox-Pico-PWM#5-modify-device-tree):
 

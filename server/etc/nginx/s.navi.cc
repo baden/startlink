@@ -27,16 +27,18 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 
-}
-server {
-    if ($host = s.navi.cc) {
-        return 301 https://$host$request_uri;
-    } # managed by Certbot
-
 
     listen 80;
-    server_name s.navi.cc;
-    return 404; # managed by Certbot
-
-
 }
+# server {
+#     if ($host = s.navi.cc) {
+#         return 301 https://$host$request_uri;
+#     } # managed by Certbot
+
+
+#     listen 80;
+#     server_name s.navi.cc;
+#     return 404; # managed by Certbot
+
+
+# }
