@@ -236,7 +236,7 @@ function updateGamepadStatus() {
             const data = {
                 command: "joy_update",
                 ping: ping,
-                droneId: droneId,
+                id: droneId,
                 data: prepareData(gamepad)
             };
             ws.send(JSON.stringify(data));

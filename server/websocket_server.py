@@ -26,12 +26,26 @@ class UDPServerProtocol:
 
     def datagram_received(self, data, addr):
         logging.info(f"UDP packet received from {addr}: {data}")
-        udp_clients.add(addr)
+        # Зараз є два види пакетів:
+        # {"command": "register", "id": "ar29wHJT"}
+        # {"command": "keep_alive", "id": "ar29wHJT"}
+        try:
+            json_data = json.loads(data)
+            command = json_data.get("command", "")
+            id = json_data.get("id", "unknown")
+            # І на register і на keep_alive додаємо (або оновлюємо) клієнта. Зберігаємо id.
+            udp_clients.add((id, addr))
+        except json.JSONDecodeError:
+            logging.error(f"Invalid JSON received from {addr}: {data}")
+            return  # Зупиняємо обробку, якщо JSON недійсний
+
+        # udp_clients.add(addr)
         # Можна додати обробку вхідних UDP-пакетів тут
 
-    def send_to_clients(self, message: bytes):
-        for addr in udp_clients:
-            self.transport.sendto(message, addr)
+    def send_to_clients(self, drone_id: str, message: bytes):
+        for id, addr in udp_clients:
+            if id == drone_id:
+                self.transport.sendto(message, addr)
 
 # Асинхронна функція для надсилання повідомлень кожні 30 секунд
 async def send_heartbeat():
@@ -109,15 +123,16 @@ async def handler(websocket):
                     if not data.get("ping", False):
                         logging.info(f"Joy update received from {websocket.remote_address}: {message}")
                     payload = data.get("data", {})
+                    drone_id = data.get("id", "unknown")
                     # Відправка пакету UDP-клієнтам
                     if udp_server_protocol and udp_server_protocol.transport:
-                        udp_server_protocol.send_to_clients(json.dumps({"command": "joy_update", "data": payload}).encode())
+                        udp_server_protocol.send_to_clients(drone_id, json.dumps({"command": "joy_update", "data": payload}).encode())
 
                 if data.get("command") == "restart":
                     logging.info(f"Received restart command from {websocket.remote_address}")
                     # Відправка пакету UDP-клієнтам
                     if udp_server_protocol and udp_server_protocol.transport:
-                        udp_server_protocol.send_to_clients(json.dumps({"command": "restart"}).encode())
+                        udp_server_protocol.send_to_clients(drone_id, json.dumps({"command": "restart"}).encode())
                 # # Парсінг пакетів з "axes" та "buttons"
                 # if "axes" in data and "buttons" in data:
                 #     # Обрізання значень axes до трьох знаків після коми
@@ -131,7 +146,7 @@ async def handler(websocket):
                 #         "buttons": buttons
                 #     }).encode()
                 #     if udp_server_protocol and udp_server_protocol.transport:
-                #         udp_server_protocol.send_to_clients(udp_message)
+                #         udp_server_protocol.send_to_clients(drone_id, udp_message)
                 #     # Відповідь WebSocket-клієнту
                 #     await websocket.send(json.dumps({
                 #         "type": "parsed",
