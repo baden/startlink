@@ -107,26 +107,6 @@ def sound_buzzer(pattern, delay=0.1):
 # oled.ClearWhite()
 
 
-device = ssd1306(port=4, address=0x3C)
-# font = ImageFont.load_default()
-font = ImageFont.truetype(r'fonts/C&C Red Alert [INET].ttf', size=22)
-
-
-# device.SendCommand(0xb0 + i)
-# device.command(0xB0, 0x02, 0x10)
-# device.data([0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F])
-
-with canvas(device) as draw:
-    draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
-    drone_image = Image.open("images/drone.png").convert("1")
-    draw.bitmap((0, 0), drone_image, fill=1)
-    # draw.text((0, 0), "Init DRONE", font=font, fill=255)
-
-
-armed_image = Image.open("images/armed.png").convert("1")
-armed_image = PIL.ImageOps.invert(armed_image)
-disarmed_image = Image.open("images/disarmed.png").convert("1")
-disarmed_image = PIL.ImageOps.invert(disarmed_image)
 
 udp_control_last_timestamp = 0
 crsf_control_last_timestamp = 0
@@ -278,7 +258,7 @@ def ppm_update():
     while True:
         now = time.time()
         # Перевіряємо таймаут даних
-        if now - last_udp_data_time > 5:
+        if now - last_udp_data_time > 5.0:
             network_data_timeout = now - last_udp_data_time
             # Плавно зменшуємо latest_axes0/latest_axes1 до нуля за 3 секунди
             with axes_lock:
@@ -322,32 +302,71 @@ oled_update_predelay = 5 # Затримка перед першим оновле
 # Глобальний прапорець для завершення потоку oled_update
 should_exit_oled = False
 
+device = ssd1306(port=4, address=0x3C)
+
+def oled_init():
+    try:
+        device.init()
+    except Exception as e:
+        print(f"Error initializing OLED: {e}")
+        return
+    with canvas(device) as draw:
+        draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
+        drone_image = Image.open("images/drone.png").convert("1")
+        draw.bitmap((0, 0), drone_image, fill=1)
+        # draw.text((0, 0), "Init DRONE", font=font, fill=255)
+
+# font = ImageFont.load_default()
+font = ImageFont.truetype(r'fonts/C&C Red Alert [INET].ttf', size=22)
+
+# device.SendCommand(0xb0 + i)
+# device.command(0xB0, 0x02, 0x10)
+# device.data([0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F])
+
+
+armed_image = Image.open("images/armed.png").convert("1")
+armed_image = PIL.ImageOps.invert(armed_image)
+disarmed_image = Image.open("images/disarmed.png").convert("1")
+disarmed_image = PIL.ImageOps.invert(disarmed_image)
+
+def oled_loop_task(counter):
+    global actual_axis_0, actual_axis_1, actual_arm_state
+    global crsf_control_last_timestamp
+    global udp_control_last_timestamp
+
+    with canvas(device) as draw:
+        draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
+        draw.text((0, 0), f"{actual_axis_0:.1f}:{actual_axis_1:.1f}", font=font, fill=255)
+        draw.text((0, 16), f"ID: {mac_b64}", font=font, fill=255)
+
+        if actual_arm_state:
+            # draw.bitmap((90, 0), armed_image, fill=1)
+            draw.text((90, 0), f"ARM", font=font, fill=255)
+        else:
+            #draw.bitmap((90, 0), disarmed_image, fill=1)
+            draw.text((90, 0), f"DIS", font=font, fill=255)
+
+        if time.time() - crsf_control_last_timestamp < 5.0:
+            draw.text((74, 0), f"R", font=font, fill=255)
+        elif time.time() - udp_control_last_timestamp < 5.0:
+            draw.text((74, 0), f"S", font=font, fill=255)
+        else:
+            draw.text((74, 0), f"-", font=font, fill=255)
+
 def oled_update():
-    global actual_axis_0, actual_axis_1, actual_arm_state, should_exit_oled
+    global should_exit_oled
     counter = 0
+    oled_init()
     time.sleep(oled_update_predelay)
     while not should_exit_oled:
-        with canvas(device) as draw:
-            draw.rectangle((0, 0, device.width, device.height), outline=0, fill=0x00)
-            draw.text((0, 0), f"{actual_axis_0:.1f}:{actual_axis_1:.1f}", font=font, fill=255)
-            draw.text((0, 16), f"ID: {mac_b64}", font=font, fill=255)
-
-            if actual_arm_state:
-                # draw.bitmap((90, 0), armed_image, fill=1)
-                draw.text((90, 0), f"ARM", font=font, fill=255)
-            else:
-                #draw.bitmap((90, 0), disarmed_image, fill=1)
-                draw.text((90, 0), f"DIS", font=font, fill=255)
-
-            if time.time() - crsf_control_last_timestamp < 5.0:
-                draw.text((74, 0), f"R", font=font, fill=255)
-            elif time.time() - udp_control_last_timestamp < 5.0:
-                draw.text((74, 0), f"S", font=font, fill=255)
-            else:
-                draw.text((74, 0), f"-", font=font, fill=255)
-
-        counter += 1
-        time.sleep(OLED_UPDATE_INTERVAL)
+            try:
+                oled_loop_task(counter)
+                counter += 1
+                time.sleep(OLED_UPDATE_INTERVAL)
+            except Exception as e:
+                print(f"oled_update error: {e}")
+                time.sleep(5)
+                oled_init()
 
 def keep_alive(sock):
     while True:

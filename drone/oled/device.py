@@ -157,13 +157,15 @@ class ssd1306(device):
         self.height = height
         self.pages = int(self.height / 8)
 
+
+    def init(self):
         self.command(
             const.DISPLAYOFF,
-            const.SETMULTIPLEX,  height-1,               # set multiplex ratio
+            const.SETMULTIPLEX,  self.height-1,               # set multiplex ratio
             const.CHARGEPUMP, 0x14,                      # set DC-DC enable
             const.MEMORYMODE, 0x00,                      # set horizontal addressing mode
-            const.COLUMNADDR,    0, width - 1,           # set start and end column
-            const.PAGEADDR,      0, height - 1,          # set start and end page
+            const.COLUMNADDR,    0, self.width - 1,           # set start and end column
+            const.PAGEADDR,      0, self.height - 1,          # set start and end page
             #if OLED_WIDTH == 128 && OLED_HEIGHT == 32
                 const.SETCOMPINS,    0x02,               # set com pins
             #else
