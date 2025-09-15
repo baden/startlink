@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 # --- Налаштування ---
 # URL до директорії з оновленнями на сервері
 SERVER_URL="http://s.navi.cc/"
@@ -12,8 +14,27 @@ MAIN_SCRIPT="drone.py"
 
 # --- Кінець налаштувань ---
 
+
+# Функція, яка буде викликана при отриманні сигналу завершення
+cleanup() {
+    echo "Отримано сигнал завершення. Зупиняю дочірній процес Python..."
+    # Якщо змінна PYTHON_PID існує, вбиваємо процес
+    if [ -n "$PYTHON_PID" ]; then
+        # kill надсилає SIGTERM, що дозволяє Python коректно завершитись
+        kill "$PYTHON_PID"
+    fi
+    # Виходимо зі скрипта
+    exit 0
+}
+
+# Встановлюємо "пастку" (trap) на сигнали SIGINT (Ctrl+C) та SIGTERM (стандартний для kill/stop)
+# Коли скрипт отримає один з цих сигналів, він викличе функцію cleanup
+trap 'cleanup' SIGINT SIGTERM
+
 # Створюємо директорію для проєкту, якщо її не існує
 # mkdir -p "$LOCAL_PROJECT_DIR"
+sleep 2 # Даємо пару секунд на підняття мережі
+cd "$LOCAL_PROJECT_DIR" || { echo "Не вдалося перейти до директорії $LOCAL_PROJECT_DIR"; exit 1; }
 
 # Нескінченний цикл, який забезпечує перезапуск
 while true; do
@@ -74,9 +95,20 @@ while true; do
     if [ -f "$MAIN_SCRIPT_PATH" ]; then
         echo "[3/3] Запускаю Python-скрипт: $MAIN_SCRIPT_PATH"
         # Запускаємо скрипт. Скрипт-супервізор буде чекати тут, доки Python-програма не завершиться.
-        /usr/bin/python3 "$MAIN_SCRIPT_PATH"
+        /usr/bin/python3 "$MAIN_SCRIPT_PATH" &
+
+        # Зберігаємо PID щойно запущеного процесу
+        PYTHON_PID=$!
+        echo "Python-скрипт запущено з PID: $PYTHON_PID"
+
+        # Чекаємо, доки дочірній процес (Python) не завершиться
+        wait "$PYTHON_PID"
         EXIT_CODE=$?
         echo "Python-скрипт завершив роботу з кодом виходу: $EXIT_CODE."
+
+        # Очищуємо змінну PID
+        PYTHON_PID=""
+
     else
         echo "Помилка: головний скрипт $MAIN_SCRIPT_PATH не знайдено. Неможливо запустити."
     fi
