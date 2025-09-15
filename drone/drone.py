@@ -115,6 +115,9 @@ armed_image = PIL.ImageOps.invert(armed_image)
 disarmed_image = Image.open("images/disarmed.png").convert("1")
 disarmed_image = PIL.ImageOps.invert(disarmed_image)
 
+udp_control_last_timestamp = 0
+crsf_control_last_timestamp = 0
+
 # Також спробуємо через gpiozero
 
 # from gpiozero import DigitalOutputDevice, PWMOutputDevice, Device
@@ -193,6 +196,7 @@ latest_arm_button = False
 def listen(sock):
     global latest_axes0, latest_axes1, latest_arm_button, last_udp_data_time, network_data_timeout
     global should_exit
+    global udp_control_last_timestamp
     while not should_exit:
         try:
             data, addr = sock.recvfrom(4096)
@@ -221,6 +225,7 @@ def listen(sock):
                         IO2_GPIO.write(buttons[3] == 0) # "D"
 
                     if axes:
+                        udp_control_last_timestamp = time.time()
                         with axes_lock:
                             if latest_arm_button:
                                 latest_axes0 = axes[0]
@@ -243,6 +248,15 @@ def listen(sock):
         except Exception as e:
             print(f"Listen error: {e}")
             break
+
+def update_servos():
+    global prev_axes0, prev_axes1
+    # Лівий борт: prev_axes0 + prev_axes1:
+    # Правий борт: prev_axes1 - prev_axes0
+    left_servo = prev_axes0 + prev_axes1
+    right_servo = prev_axes1 - prev_axes0
+    servo1.set_duty_cycle(clamp(1.0, 1.5 + right_servo * 0.5, 2.0))
+    servo2.set_duty_cycle(clamp(1.0, 1.5 + left_servo * 0.5, 2.0))
 
 def ppm_update():
     global latest_axes0, latest_axes1, network_data_timeout, last_udp_data_time
@@ -278,26 +292,14 @@ def ppm_update():
             # print(f"Updating servo1: axes[0]={axes0}, duty_cycle={duty_cycle}")
             # servo1.set_duty_cycle(1.5 + axes0 * 0.5)
             prev_axes0 = axes0
-
-            # Лівий борт: prev_axes0 + prev_axes1:
-            # Правий борт: prev_axes1 - prev_axes0
-            left_servo = prev_axes0 + prev_axes1
-            right_servo = prev_axes1 - prev_axes0
-            servo1.set_duty_cycle(clamp(1.0, 1.5 + right_servo * 0.5, 2.0))
-            servo2.set_duty_cycle(clamp(1.0, 1.5 + left_servo * 0.5, 2.0))
+            update_servos()
 
         if prev_axes1 is None or abs(axes1 - prev_axes1) >= 0.01:
             # duty_cycle = 7.5 + axes1 * 2.5
             # print(f"Updating servo2: axes[1]={axes1}, duty_cycle={duty_cycle}")
             # servo2.set_duty_cycle(1.5 + axes1 * 0.5)
             prev_axes1 = axes1
-
-            # Лівий борт: prev_axes0 + prev_axes1:
-            # Правий борт: prev_axes1 - prev_axes0
-            left_servo = prev_axes0 + prev_axes1
-            right_servo = prev_axes1 - prev_axes0
-            servo1.set_duty_cycle(clamp(1.0, 1.5 + right_servo * 0.5, 2.0))
-            servo2.set_duty_cycle(clamp(1.0, 1.5 + left_servo * 0.5, 2.0))
+            update_servos()
 
         time.sleep(PPM_UPDATE_INTERVAL)
 
@@ -324,6 +326,13 @@ def oled_update():
                 #draw.bitmap((90, 0), disarmed_image, fill=1)
                 draw.text((90, 0), f"DIS", font=font, fill=255)
 
+            if time.time() - crsf_control_last_timestamp < 5.0:
+                draw.text((60, 0), f"R", font=font, fill=255)
+            elif time.time() - udp_control_last_timestamp < 5.0:
+                draw.text((60, 0), f"S", font=font, fill=255)
+            else:
+                draw.text((60, 0), f"-", font=font, fill=255)
+
         counter += 1
         time.sleep(OLED_UPDATE_INTERVAL)
 
@@ -335,20 +344,62 @@ def keep_alive(sock):
         print("Keep-alive packet sent.")
         time.sleep(SEND_INTERVAL)
 
-# from crsf import CRSF
+from crsf import CRSF
 
-# def crsf_read(crsf):
-#     while True:
-#         crsf.process()
-#         time.sleep(0.1)
+latest_crsf_channels = []
+latest_crsf_timestamp = 0
+
+def crsf_read(crsf):
+    global latest_crsf_channels, latest_crsf_timestamp
+    global latest_arm_button
+    global prev_axes0, prev_axes1
+    global crsf_control_last_timestamp
+
+    while True:
+        crsf.process()
+        if crsf.channels:
+            # Обробка отриманих каналів
+
+            latest_crsf_channels = crsf.channels
+            crsf.channels = None
+            crsf_control_last_timestamp = time.time()
+
+            # if time.time() - latest_crsf_timestamp > 1.0:
+            #     print(f"Latest CRSF Channels: {latest_crsf_channels}")
+            latest_crsf_timestamp = time.time()
+
+            if latest_crsf_channels:
+                # Треба показати на OLED шо керування по радіо
+                # канал № - ARM/DISARM (>0.5)
+                new_arm_button = latest_crsf_channels[4] > 0.5
+
+                if new_arm_button:
+                    prev_axes0 = latest_crsf_channels[0]
+                    prev_axes1 = latest_crsf_channels[1]
+                else:
+                    prev_axes0 = 0.0
+                    prev_axes1 = 0.0
+
+                update_servos()
+
+                if latest_arm_button != new_arm_button:
+                    latest_arm_button = new_arm_button
+                    if isRPi:
+                        GPIO.output(led_pin, GPIO.HIGH if latest_arm_button else GPIO.LOW)
+                    else:
+                        if latest_arm_button:
+                            sound_buzzer([True, False])
+                        else:
+                            sound_buzzer([True, False, True, False])
+
+        time.sleep(0.02)
 
 
 def main():
-
     # Стартовий піск
     sound_buzzer([True, False])
 
-    # crsf = CRSF(port="/dev/ttyS1", baudrate=420000)
+    crsf = CRSF(port="/dev/ttyS3", baudrate=420000)
 
     wait_for_internet()
     sock = None
@@ -382,8 +433,8 @@ def main():
                 thread_oled.start()
 
                 # Потік для читання з CRSF
-                # thread_crsf = threading.Thread(target=crsf_read, args=(crsf,))
-                # thread_crsf.start()
+                thread_crsf = threading.Thread(target=crsf_read, args=(crsf,))
+                thread_crsf.start()
 
             if should_exit:
                 print("Exiting by restart command")

@@ -20,8 +20,8 @@ PPM1 (правий борт)               | 15 | PWM5
 PPM2 (лівий борт)                | 16 | PWM6
 PPM3 (резерв1)                   | 14 | PWM4
 PPM4 (резерв2)                   | 12 | PWM2
-RF-IN (вхід з приймача) RX       | 20 | UART4_RX
-RF-IN (вихід на телеметрію) TX   | 19 | UART4_TX
+RF-IN (вхід з приймача) RX       | 20 | UART3_RX
+RF-IN (вихід на телеметрію) TX   | 19 | UART3_TX
 RF-OUT (вихід на контролер) TX   | 21 | UART1_TX
 RF-OUT (вхід телеметрії) RX      | 22 | UART1_RX
 OLED (SDA)                       | 24 | I2C4_SDA
