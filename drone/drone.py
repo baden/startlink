@@ -39,6 +39,8 @@ last_udp_data_time = time.time()
 actual_axis_0 = 0.0
 actual_axis_1 = 0.0
 actual_arm_state = False
+actual_lebidka_state = "stop"
+actual_aktuator_state = "stop"
 
 #latest_axes0 = 0.0
 #latest_axes1 = 0.0
@@ -88,6 +90,41 @@ else:
     IO2_GPIO.write(True)
     IO3_GPIO.write(True)
     IO4_GPIO.write(True)
+
+# Функція для керування лебідкою
+# IO1_GPIO=0 - лебідка вгору
+# IO2_GPIO=0 - лебідка вниз
+# IO1_GPIO=IO2_GPIO=1 - зупинка лебідки
+# Комбінація IO1_GPIO=IO2_GPIO=0 заборонена
+def lebidka(direction):
+    print(f"Lebidka direction: {direction}")
+    if direction == "up":
+        IO2_GPIO.write(True)
+        IO1_GPIO.write(False)
+    elif direction == "down":
+        IO1_GPIO.write(True)
+        IO2_GPIO.write(False)
+    else:
+        IO1_GPIO.write(True)
+        IO2_GPIO.write(True)
+
+
+# Функція керування актуатором
+# IO3_GPIO - актуатор вперед
+# IO4_GPIO - актуатор назад
+# IO3_GPIO=IO4_GPIO=1 - зупинка актуатора
+# Комбінація IO3_GPIO=IO4_GPIO=0 заборонена
+def aktuator(direction):
+    print(f"Aktuator direction: {direction}")
+    if direction == "forward":
+        IO3_GPIO.write(False)
+        IO4_GPIO.write(True)
+    elif direction == "backward":
+        IO3_GPIO.write(True)
+        IO4_GPIO.write(False)
+    else:
+        IO3_GPIO.write(True)
+        IO4_GPIO.write(True)
 
 def sound_buzzer(pattern, delay=0.1):
     """
@@ -183,6 +220,7 @@ def wait_for_internet(timeout=5):
 
 def listen(sock):
     global actual_axis_0, actual_axis_1, actual_arm_state
+    global actual_lebidka_state, actual_aktuator_state
     global last_udp_data_time, network_data_timeout
     global should_exit
     global udp_control_last_timestamp
@@ -199,10 +237,10 @@ def listen(sock):
                     axes = data.get("axes", [])
                     buttons = data.get("buttons", [])
 
-                    # Керування по радіо має пріоритет
-                    have_radio_control = (time.time() - crsf_control_last_timestamp > 5.0)
+                    # Керування по радіо має пріоритет. True якшо пройшло більше 5 секунд після останнього отримання даних
+                    lost_radio_control = ((time.time() - crsf_control_last_timestamp) > 5.0)
 
-                    if have_radio_control and buttons:
+                    if lost_radio_control and buttons:
                         new_arm_button = buttons[0] == 1
                         if actual_arm_state != new_arm_button:
                             actual_arm_state = new_arm_button
@@ -213,10 +251,10 @@ def listen(sock):
                                     sound_buzzer([True, False])
                                 else:
                                     sound_buzzer([True, False, True, False])
-                        IO1_GPIO.write(buttons[1] == 0) # "A"
-                        IO2_GPIO.write(buttons[3] == 0) # "D"
+                        # IO1_GPIO.write(buttons[1] == 0) # "A"
+                        # IO2_GPIO.write(buttons[3] == 0) # "D"
 
-                    if have_radio_control and axes:
+                    if lost_radio_control and axes:
                         udp_control_last_timestamp = time.time()
                         with axes_lock:
                             if actual_arm_state:
@@ -225,6 +263,35 @@ def listen(sock):
                             else:
                                 actual_axis_0 = 0.0
                                 actual_axis_1 = 0.0
+
+                            # axes[2] < -0.5 - тумблер B вверх.
+                            # axes[2] > 0.5 - тумблер B вниз.
+                            # інакше - тумблер B в нейтральному положенні.
+                            if axes[2] < -0.5:
+                                new_lebidka_state = "up"
+                            elif axes[2] > 0.5:
+                                new_lebidka_state = "down"
+                            else:
+                                new_lebidka_state = "neutral"
+
+                            # axes[3] < -0.5 - тумблер C вверх.
+                            # axes[3] > 0.5 - тумблер C вниз.
+                            # інакше - тумблер C в нейтральному положенні.
+                            if axes[3] < -0.5:
+                                new_aktuator_state = "forward"
+                            elif axes[3] > 0.5:
+                                new_aktuator_state = "backward"
+                            else:
+                                new_aktuator_state = "neutral"
+
+                            if actual_lebidka_state != new_lebidka_state:
+                                actual_lebidka_state = new_lebidka_state
+                                lebidka(new_lebidka_state)
+
+                            if actual_aktuator_state != new_aktuator_state:
+                                actual_aktuator_state = new_aktuator_state
+                                aktuator(new_aktuator_state)
+
                     else:
                         print("No axes data", packet)
 
@@ -255,22 +322,32 @@ def ppm_update():
     global network_data_timeout, last_udp_data_time
     prev_axes0 = 0.0
     prev_axes1 = 0.0
-    while True:
+    global should_exit
+    while not should_exit:
         now = time.time()
+        # Визначаємо останній час керування (UDP або CRSF)
+        last_control_time = max(last_udp_data_time, crsf_control_last_timestamp)
         # Перевіряємо таймаут даних
-        if now - last_udp_data_time > 5.0:
-            network_data_timeout = now - last_udp_data_time
-            # Плавно зменшуємо latest_axes0/latest_axes1 до нуля за 3 секунди
+        if now - last_control_time > 1.5:
+            network_data_timeout = now - last_control_time
+            # Плавно зменшуємо latest_axes0/latest_axes1 до нуля за 1 секунду
             with axes_lock:
-                step = PPM_UPDATE_INTERVAL / 3.0
+                step = PPM_UPDATE_INTERVAL / 1.0
                 if abs(actual_axis_0) > 0.001:
-                    actual_axis_0 -= step * actual_axis_0 * 3
-                    if abs(actual_axis_0) < 0.001:
-                        actual_axis_0 = 0.0
+                    if actual_axis_0 > 0:
+                        actual_axis_0 = max(0.0, actual_axis_0 - step)
+                    else:
+                        actual_axis_0 = min(0.0, actual_axis_0 + step)
                 if abs(actual_axis_1) > 0.001:
-                    actual_axis_1 -= step * actual_axis_1 * 3
-                    if abs(actual_axis_1) < 0.001:
-                        actual_axis_1 = 0.0
+                    if actual_axis_1 > 0:
+                        actual_axis_1 = max(0.0, actual_axis_1 - step)
+                    else:
+                        actual_axis_1 = min(0.0, actual_axis_1 + step)
+            # Переводимо в disarm якщо таймаут > 10 секунд
+            global actual_arm_state
+            if now - last_control_time > 10.0 and actual_arm_state:
+                actual_arm_state = False
+                sound_buzzer([True, False, True, False])  # Звук disarm
         else:
             network_data_timeout = 0
 
@@ -358,22 +435,28 @@ def oled_update():
     counter = 0
     oled_init()
     time.sleep(oled_update_predelay)
-    while not should_exit_oled:
-            try:
-                oled_loop_task(counter)
-                counter += 1
-                time.sleep(OLED_UPDATE_INTERVAL)
-            except Exception as e:
-                print(f"oled_update error: {e}")
-                time.sleep(5)
-                oled_init()
+    global should_exit
+    while not should_exit_oled and not should_exit:
+        try:
+            oled_loop_task(counter)
+            counter += 1
+            time.sleep(OLED_UPDATE_INTERVAL)
+        except Exception as e:
+            print(f"oled_update error: {e}")
+            time.sleep(5)
+            oled_init()
 
 def keep_alive(sock):
-    while True:
+    global should_exit
+    while not should_exit:
         # sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
         packet = f'{{"command": "keep_alive", "id": "{mac_b64}"}}'
-        sock.sendto(packet.encode('utf-8'), (SERVER_IP, SERVER_PORT))
-        print("Keep-alive packet sent.")
+        try:
+            sock.sendto(packet.encode('utf-8'), (SERVER_IP, SERVER_PORT))
+            print("Keep-alive packet sent.")
+        except OSError as e:
+            print(f"Keep-alive error: {e}")
+            break
         time.sleep(SEND_INTERVAL)
 
 from crsf import CRSF
@@ -387,7 +470,8 @@ def crsf_read(crsf):
     global actual_axis_0, actual_axis_1
     global crsf_control_last_timestamp
 
-    while True:
+    global should_exit
+    while not should_exit:
         crsf.process()
         if crsf.channels:
             # Обробка отриманих каналів
@@ -483,15 +567,6 @@ def main():
                     sock.close()
                 break
             time.sleep(1)
-        except (OSError, socket.error) as e:
-            print(f"Втрата зв'язку з сервером: {e}. Перепідключення...")
-            if sock:
-                try:
-                    sock.close()
-                except:
-                    pass
-                sock = None
-            wait_for_internet()
         except KeyboardInterrupt:
             print("Client stopped.")
             if sock:
