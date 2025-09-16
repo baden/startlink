@@ -320,6 +320,7 @@ def update_servos():
 def ppm_update():
     global actual_axis_0, actual_axis_1
     global network_data_timeout, last_udp_data_time
+    global actual_lebidka_state, actual_aktuator_state
     prev_axes0 = 0.0
     prev_axes1 = 0.0
     global should_exit
@@ -343,11 +344,25 @@ def ppm_update():
                         actual_axis_1 = max(0.0, actual_axis_1 - step)
                     else:
                         actual_axis_1 = min(0.0, actual_axis_1 + step)
+            # Якщо втрачено будь-яке керування (UDP або CRSF) понад 3 секунди
+            udp_timeout = now - last_udp_data_time > 3.0
+            crsf_timeout = now - crsf_control_last_timestamp > 3.0
+            if udp_timeout or crsf_timeout:
+                try:
+                    if actual_lebidka_state != "neutral":
+                        actual_lebidka_state = "neutral"
+                        lebidka(actual_lebidka_state)
+                    if actual_aktuator_state != "neutral":
+                        actual_aktuator_state = "neutral"
+                        aktuator(actual_aktuator_state)
+                except Exception as e:
+                    print(f"Neutral IO error: {e}")
             # Переводимо в disarm якщо таймаут > 10 секунд
             global actual_arm_state
             if now - last_control_time > 10.0 and actual_arm_state:
-                actual_arm_state = False
-                sound_buzzer([True, False, True, False])  # Звук disarm
+                if actual_arm_state:
+                    actual_arm_state = False
+                    sound_buzzer([True, False, True, False])  # Звук disarm
         else:
             network_data_timeout = 0
 
@@ -468,6 +483,7 @@ def crsf_read(crsf):
     global latest_crsf_channels, latest_crsf_timestamp
     global actual_arm_state
     global actual_axis_0, actual_axis_1
+    global actual_lebidka_state, actual_aktuator_state
     global crsf_control_last_timestamp
 
     global should_exit
@@ -507,6 +523,30 @@ def crsf_read(crsf):
                             sound_buzzer([True, False])
                         else:
                             sound_buzzer([True, False, True, False])
+
+                # канал latest_crsf_channels[2] - лебідка
+                if latest_crsf_channels[2] < -0.5:
+                    new_lebidka_state = "up"
+                elif latest_crsf_channels[2] > 0.5:
+                    new_lebidka_state = "down"
+                else:
+                    new_lebidka_state = "neutral"
+
+                # канал latest_crsf_channels[3] - актуатор
+                if latest_crsf_channels[3] < -0.5:
+                    new_aktuator_state = "forward"
+                elif latest_crsf_channels[3] > 0.5:
+                    new_aktuator_state = "backward"
+                else:
+                    new_aktuator_state = "neutral"
+
+                if actual_lebidka_state != new_lebidka_state:
+                    actual_lebidka_state = new_lebidka_state
+                    lebidka(new_lebidka_state)
+
+                if actual_aktuator_state != new_aktuator_state:
+                    actual_aktuator_state = new_aktuator_state
+                    aktuator(new_aktuator_state)
 
         time.sleep(0.02)
 
