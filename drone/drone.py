@@ -206,16 +206,16 @@ SEND_INTERVAL = 15       # Інтервал keep-alive (секунд)
 PPM_UPDATE_INTERVAL = 0.02 # 20 мс
 OLED_UPDATE_INTERVAL = 0.5 # 0.5 секунда
 
-def wait_for_internet(timeout=5):
-    while True:
-        try:
-            # Пінгуємо Google DNS
-            subprocess.check_call(["ping", "8.8.8.8", "-c", "1", "-W", str(timeout)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print("Інтернет доступний.")
-            return
-        except subprocess.CalledProcessError:
-            print("Немає інтернету. Очікування...")
-            time.sleep(2)
+# def wait_for_internet(timeout=5):
+#     while True:
+#         try:
+#             # Пінгуємо Google DNS
+#             subprocess.check_call(["ping", "8.8.8.8", "-c", "1", "-W", str(timeout)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+#             print("Інтернет доступний.")
+#             return
+#         except subprocess.CalledProcessError:
+#             print("Немає інтернету. Очікування...")
+#             time.sleep(2)
 
 
 def listen(sock):
@@ -242,7 +242,8 @@ def listen(sock):
 
                     if lost_radio_control and buttons:
                         new_arm_button = buttons[0] == 1
-                        if actual_arm_state != new_arm_button:
+                        # ARM активується якщо кнопка натиснута, навіть після DISARM по таймауту
+                        if actual_arm_state != new_arm_button or (not actual_arm_state and new_arm_button):
                             actual_arm_state = new_arm_button
                             if isRPi:
                                 GPIO.output(led_pin, GPIO.HIGH if actual_arm_state else GPIO.LOW)
@@ -514,7 +515,8 @@ def crsf_read(crsf):
 
                 update_servos()
 
-                if actual_arm_state != new_arm_button:
+                # ARM активується якщо канал > 0.5, навіть після DISARM по таймауту
+                if actual_arm_state != new_arm_button or (not actual_arm_state and new_arm_button):
                     actual_arm_state = new_arm_button
                     if isRPi:
                         GPIO.output(led_pin, GPIO.HIGH if actual_arm_state else GPIO.LOW)
@@ -557,40 +559,54 @@ def main():
 
     crsf = CRSF(port="/dev/ttyS3", baudrate=420000)
 
-    wait_for_internet()
+    # wait_for_internet()
     sock = None
-
+    udp_threads_started = False
     global should_exit
     while True:
         try:
-            if sock is None:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.settimeout(1.0)
-                sock.bind(("", 0))
-                # Відправляємо перший реєстраційний пакет
-                packet = f'{{"command": "register", "id": "{mac_b64}"}}'
-                sock.sendto(packet.encode('utf-8'), (SERVER_IP, SERVER_PORT))
-                print("Registration packet sent.")
+            # Спроба створити сокет, якщо ще не створено і не стартували потоки
 
-                # Потік для прослуховування відповідей
-                thread_listen = threading.Thread(target=listen, args=(sock,), daemon=True)
-                thread_listen.start()
+            if sock is None and not udp_threads_started:
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sock.settimeout(1.0)
+                    sock.bind(("", 0))
+                    # Відправляємо перший реєстраційний пакет
+                    packet = f'{{"command": "register", "id": "{mac_b64}"}}'
+                    sock.sendto(packet.encode('utf-8'), (SERVER_IP, SERVER_PORT))
+                    print("Registration packet sent.")
 
-                # Потік для періодичних keep-alive
-                thread_keepalive = threading.Thread(target=keep_alive, args=(sock,), daemon=True)
-                thread_keepalive.start()
+                    # Потік для прослуховування відповідей
+                    thread_listen = threading.Thread(target=listen, args=(sock,), daemon=True)
+                    thread_listen.start()
 
-                # Потік для періодичного оновлення PPM
+                    # Потік для періодичних keep-alive
+                    thread_keepalive = threading.Thread(target=keep_alive, args=(sock,), daemon=True)
+                    thread_keepalive.start()
+
+                    udp_threads_started = True
+                except (socket.gaierror, OSError) as e:
+                    print(f"UDP socket error: {e}. Керування тільки через CRSF.")
+                    sock = None
+
+            # PPM update thread always starts once, regardless of UDP/network
+            if not hasattr(main, "ppm_thread_started"):
                 thread_ppm = threading.Thread(target=ppm_update, daemon=True)
                 thread_ppm.start()
+                main.ppm_thread_started = True
 
-                # Потік для оновлення OLED
+            # OLED thread always starts once, regardless of UDP/network
+            if not hasattr(main, "oled_thread_started"):
                 thread_oled = threading.Thread(target=oled_update, daemon=True)
                 thread_oled.start()
+                main.oled_thread_started = True
 
-                # Потік для читання з CRSF
+            # Потік для читання з CRSF завжди стартує
+            if not hasattr(main, "crsf_thread_started"):
                 thread_crsf = threading.Thread(target=crsf_read, args=(crsf,))
                 thread_crsf.start()
+                main.crsf_thread_started = True
 
             if should_exit:
                 print("Exiting by restart command")
@@ -606,7 +622,11 @@ def main():
                 if sock:
                     sock.close()
                 break
-            time.sleep(1)
+            # Періодично пробуємо створити сокет, якщо інтернет з'явився
+            if sock is None and not udp_threads_started:
+                time.sleep(5)
+            else:
+                time.sleep(1)
         except KeyboardInterrupt:
             print("Client stopped.")
             if sock:
