@@ -315,8 +315,8 @@ def update_servos():
     # Правий борт: actual_axis_1 - actual_axis_0
     left_servo = actual_axis_0 + actual_axis_1
     right_servo = actual_axis_1 - actual_axis_0
-    servo1.set_duty_cycle(clamp(1.0, 1.5 + right_servo * 0.5, 2.0))
-    servo2.set_duty_cycle(clamp(1.0, 1.5 + left_servo * 0.5, 2.0))
+    servo1.set_duty_cycle(clamp(0.5, 1.5 + right_servo * 1.0, 2.5))
+    servo2.set_duty_cycle(clamp(0.5, 1.5 + left_servo * 1.0, 2.5))
 
 def ppm_update():
     global actual_axis_0, actual_axis_1
@@ -465,15 +465,15 @@ def oled_update():
 def keep_alive(sock):
     global should_exit
     while not should_exit:
-        # sock.sendto(b"register", (SERVER_IP, SERVER_PORT))
         packet = f'{{"command": "keep_alive", "id": "{mac_b64}"}}'
         try:
             sock.sendto(packet.encode('utf-8'), (SERVER_IP, SERVER_PORT))
             print("Keep-alive packet sent.")
+            time.sleep(SEND_INTERVAL)
         except OSError as e:
             print(f"Keep-alive error: {e}")
-            break
-        time.sleep(SEND_INTERVAL)
+            # Не завершуємо потік, а чекаємо і пробуємо знову
+            time.sleep(5)
 
 from crsf import CRSF
 
