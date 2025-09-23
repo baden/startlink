@@ -36,17 +36,19 @@ DEBUG_RX (tty)                   |  2 | UART2_RX
 GND                              |  3 | GND
 
 
-
 ## Треба перепрошити кастомну збірку
 
-TBD
+1. Встановіть [ПО для прошивки](https://files.luckfox.com/wiki/Luckfox-Pico/Software/SocToolKit.zip)
+2. Заванжажте файли прошивки з цього репозиторію, з теки `luckfox/luckfox-pico-pro`.
+3. Інструкція по прошивці є [тут](https://wiki.luckfox.com/Luckfox-Pico/Luckfox-Pico-Flash-burn-image)
 
 
 ## Встановлення та запуск
 
 Сподіваюсь це не знадобиться, і все шо треба, буде вже в кастомній збірці.
 
-А поки робимо вручну
+А поки робимо вручну. Заходимо на плату через DEBUG UART, авторизуємося під `root`, пароль `luckfox`.
+Виконуємо:
 
 ```
 cd /root
