@@ -29,6 +29,8 @@ mac_b64 = base64.b64encode(mac_bytes).decode('utf-8')
 # Глобальний прапорець для завершення процесу
 should_exit = False
 
+arm_active_start_time = None  # Час початку ARM
+
 # Таймаут отримання даних від UDP-сервера
 network_data_timeout = 0  # 0 - дані є, >0 - скільки секунд немає даних
 last_udp_data_time = time.time()
@@ -224,6 +226,8 @@ def listen(sock):
     global last_udp_data_time, network_data_timeout
     global should_exit
     global udp_control_last_timestamp
+    global arm_active_start_time
+
     while not should_exit:
         try:
             data, addr = sock.recvfrom(4096)
@@ -300,6 +304,11 @@ def listen(sock):
                     print("Received restart command")
                     should_exit = True
 
+                if actual_arm_state:
+                    arm_active_start_time = time.time()
+                else:
+                    arm_active_start_time = None
+
             except Exception as e:
                 print(f"Received from server: {data.decode()}")
                 print(f"Error parsing packet: {e}")
@@ -360,7 +369,7 @@ def ppm_update():
                     print(f"Neutral IO error: {e}")
             # Переводимо в disarm якщо таймаут > 10 секунд
             global actual_arm_state
-            if now - last_control_time > 10.0 and actual_arm_state:
+            if now - last_control_time > (3*60) and actual_arm_state:
                 if actual_arm_state:
                     actual_arm_state = False
                     sound_buzzer([True, False, True, False])  # Звук disarm
@@ -464,6 +473,8 @@ def oled_update():
 
 def keep_alive(sock):
     global should_exit
+    global arm_active_start_time, actual_arm_state
+
     while not should_exit:
         packet = f'{{"command": "keep_alive", "id": "{mac_b64}"}}'
         try:
@@ -474,6 +485,10 @@ def keep_alive(sock):
             print(f"Keep-alive error: {e}")
             # Не завершуємо потік, а чекаємо і пробуємо знову
             time.sleep(5)
+        if arm_active_start_time is not None:
+            if time.time() - arm_active_start_time > (20 * 60):
+                print("ARM timeout exceeded. Exiting.")
+                should_exit = True
 
 from crsf import CRSF
 
@@ -486,6 +501,7 @@ def crsf_read(crsf):
     global actual_axis_0, actual_axis_1
     global actual_lebidka_state, actual_aktuator_state
     global crsf_control_last_timestamp
+    global arm_active_start_time
 
     global should_exit
     while not should_exit:
@@ -514,6 +530,12 @@ def crsf_read(crsf):
                     actual_axis_1 = 0.0
 
                 update_servos()
+
+                if actual_arm_state:
+                    arm_active_start_time = time.time()
+                else:
+                    arm_active_start_time = None
+
 
                 # ARM активується якщо канал > 0.5, навіть після DISARM по таймауту
                 if actual_arm_state != new_arm_button or (not actual_arm_state and new_arm_button):
