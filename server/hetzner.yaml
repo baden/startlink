@@ -1,0 +1,124 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - wireguard
+  - iptables
+  - ufw
+  - nginx
+  - curl
+  - wget
+
+write_files:
+  # 1. Налаштування IP forwarding
+  - path: /etc/sysctl.d/99-wireguard-forwarding.conf
+    content: |
+      net.ipv4.ip_forward=1
+      net.ipv6.conf.all.forwarding=1
+
+  # 2. Конфігурація Nginx (Проксі для go2rtc)
+  - path: /etc/nginx/sites-available/default
+    content: |
+      server {
+          listen 80;
+          server_name _;
+
+          location / {
+              proxy_pass http://127.0.0.1:1984;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
+          }
+      }
+
+  # 3. Базова конфігурація go2rtc
+  - path: /etc/go2rtc.yaml
+    content: |
+      log:
+        level: info
+      api:
+        listen: "127.0.0.1:1984"
+      rtsp:
+        listen: ":8554"
+      streams:
+        # Приклад додавання камери (замініть на ваші реальні IP адрес пристроїв B)
+        # camera1: rtsp://admin:password@10.0.0.10:554/stream1
+        # camera2: rtsp://admin:password@10.0.0.11:554/stream1
+
+  # 4. Systemd сервіс для go2rtc
+  - path: /etc/systemd/system/go2rtc.service
+    content: |
+      [Unit]
+      Description=go2rtc restreamer
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/local/bin/go2rtc -config /etc/go2rtc.yaml
+      Restart=always
+      RestartSec=5
+      WorkingDirectory=/usr/local/bin/
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # Змінні
+  - WG_PORT=51820
+  - ETH_INTERFACE=$(ip route list default | awk '{print $5}')
+
+  # Встановлення go2rtc (скачуємо бінарний файл)
+  - GO2RTC_VERSION=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | grep tag_name | cut -d '"' -f 4)
+  - wget -O /usr/local/bin/go2rtc https://github.com/AlexxIT/go2rtc/releases/download/${GO2RTC_VERSION}/go2rtc_linux_amd64
+  - chmod +x /usr/local/bin/go2rtc
+
+  # Налаштування Wireguard ключів
+  - mkdir -p /etc/wireguard
+  - cd /etc/wireguard
+  - umask 077
+  - SERVER_PRIV_KEY=$(wg genkey)
+  - SERVER_PUB_KEY=$(echo "$SERVER_PRIV_KEY" | wg pubkey)
+  - CLIENT_PRIV_KEY=$(wg genkey)
+  - CLIENT_PUB_KEY=$(echo "$CLIENT_PRIV_KEY" | wg pubkey)
+
+  # Створення wg0.conf
+  - |
+    cat > /etc/wireguard/wg0.conf <<EOF
+    [Interface]
+    PrivateKey = $SERVER_PRIV_KEY
+    Address = 10.8.0.1/24
+    ListenPort = $WG_PORT
+    PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $ETH_INTERFACE -j MASQUERADE
+    PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o $ETH_INTERFACE -j MASQUERADE
+
+    [Peer]
+    PublicKey = $CLIENT_PUB_KEY
+    # Дозволяємо підмережу 10.0.0.0/24 (ваші камери за міні-ПК)
+    AllowedIPs = 10.8.0.2/32, 10.0.0.0/24
+    EOF
+
+  # Створення client.conf для Міні-ПК (M)
+  - SERVER_IP=$(curl -s ifconfig.me)
+  - |
+    cat > /root/client.conf <<EOF
+    [Interface]
+    PrivateKey = $CLIENT_PRIV_KEY
+    Address = 10.8.0.2/32
+    DNS = 1.1.1.1
+
+    [Peer]
+    PublicKey = $SERVER_PUB_KEY
+    Endpoint = $SERVER_IP:$WG_PORT
+    AllowedIPs = 0.0.0.0/0
+    PersistentKeepalive = 25
+    EOF
+
+  # Налаштування Firewall та запуск сервісів
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow $WG_PORT/udp
+  - ufw --force enable
+  - systemctl daemon-reload
+  - systemctl enable go2rtc nginx wg-quick@wg0
+  - systemctl start go2rtc nginx wg-quick@wg0

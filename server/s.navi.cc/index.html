@@ -5,10 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone Control</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+                video-rtc {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: black;
+            border-radius: 4px;
+            display: block;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <h1>Drone Control</h1>
+        <!--iframe
+            src="http://10.8.0.2:1984/stream.html?src=front_a&mode=webrtc"
+            width="640"
+            height="480"
+            frameborder="0"
+            allowfullscreen>
+        </iframe-->
+
+    <video-rtc
+        id="camera1"
+        src="http://10.8.0.2:1984/api/ws?src=front_a"
+        mode="mse,webrtc"
+        autoplay
+        muted
+        controls>
+    </video-rtc>
+    <video-rtc
+        id="camera1"
+        src="http://10.8.0.2:1984/api/ws?src=front_a"
+        mode="mse,webrtc"
+        autoplay
+        muted
+        controls>
+    </video-rtc>
+
         <div class="block">
             <span id="gamepad-icon" class="gamepad-icon disconnected">
                 <svg class="svg-icon" style="width: 48px; height: 48px; vertical-align: middle; fill: currentColor; overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg">
@@ -61,5 +95,24 @@
     </div>
 
     <script src="script.js"></script>
+    <!-- <script type="module" src="http://10.8.0.2:1984/video-rtc.js"></script> -->
+    <!-- <script type="module" src="http://localhost:1984/video-rtc.js"></script> -->
+    <script type="module">
+        // 1. Імпортуємо клас із вашого сервера go2rtc
+        import { VideoRTC } from 'http://10.8.0.2:1984/video-rtc.js';
+
+        // 2. Реєструємо його як офіційний HTML-тег
+        // Тепер браузер знатиме, що <video-rtc> має виконувати код із класу VideoRTC
+        customElements.define('video-rtc', VideoRTC);
+
+        console.log('Компонент VideoRTC успішно зареєстровано');
+
+                // 2. Знаходимо наш елемент
+        const player = document.getElementById('camera1');
+
+        // 3. Явно призначаємо src.
+        // Це активує метод set src() всередині класу і запустить підключення.
+        player.src = 'http://10.8.0.2:1984/api/ws?src=front_a';
+    </script>
 </body>
 </html>
