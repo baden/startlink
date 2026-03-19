@@ -27,6 +27,7 @@ RF-OUT (вхід телеметрії) RX      | 22 | UART1_RX
 OLED (SDA)                       | 34 | I2C3_SDA
 OLED (SCL)                       | 29 | I2C3_SCL
 BEEPER                           | 26 | GPIO2_A2
+OLED (VDD)                       | 27 | GPIO2_A3
 IO1 (лебідка вгору)              |  4 | GPIO1_C7
 IO2 (лебідка вниз)               |  5 | GPIO1_C6
 IO3 ()                           |  6 | GPIO1_C5
